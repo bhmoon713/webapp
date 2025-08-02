@@ -6,7 +6,7 @@ var app = new Vue({
         ros: null,
         logs: [],
         loading: false,
-        rosbridge_address: '',
+        rosbridge_address: 'wss://i-085b4acb4e840851d.robotigniteacademy.com/168606c0-8f5d-40f1-bb20-86ceb48094d8/rosbridge/',
         port: '9090',
         // Robot Status for Task 2
         robotStatus: {
@@ -33,6 +33,11 @@ var app = new Vue({
         cameraViewer: null,
         // Joystick
         joystick: null,
+        
+        // speed
+        lastPose: { x: null, y: null, t: null },
+
+        
         // ROS Topics
         cmdVelTopic: null,
         navGoalTopic: null,
@@ -235,11 +240,14 @@ var app = new Vue({
                 
                 var maxDistance = 60;
                 var distance = Math.min(data.distance, maxDistance);
-                var angle = data.angle.radian;
-                
-                var linear = (distance / maxDistance) * 0.5 * Math.cos(angle);
-                var angular = -Math.sin(angle) * (distance / maxDistance) * 1.0;
-                
+                const angle = data.angle.radian;
+
+                // Up (90°) → +linear.x ; Down (270°) → -linear.x
+                const linear  = (distance / maxDistance) * 0.5 * Math.sin(angle);
+
+                // Right (0°) → negative angular.z (turn right); Left (180°) → positive (turn left)
+                const angular = -(distance / maxDistance) * 1.0 * Math.cos(angle);
+                                
                 var message = new ROSLIB.Message({
                     linear: { x: linear, y: 0, z: 0 },
                     angular: { x: 0, y: 0, z: angular }
@@ -281,11 +289,34 @@ var app = new Vue({
             var theta = Math.atan2(siny_cosp, cosy_cosp);
             this.robotStatus.orientation = theta * 180 / Math.PI;
             
-            // Update speed
-            this.robotStatus.speed = Math.sqrt(
-                twist.linear.x * twist.linear.x + 
-                twist.linear.y * twist.linear.y
-            );
+            // Update speed (prefer twist, fallback to pose delta)
+            let speed = 0;
+            if (odomMessage.twist && odomMessage.twist.twist) {
+            const lin = odomMessage.twist.twist.linear || {x:0,y:0};
+            speed = Math.hypot(lin.x || 0, lin.y || 0);
+            }
+
+            // Fallback: compute from pose if twist is missing/zero
+            if (!speed || speed < 1e-4) {
+            // ROS 2 stamp: sec + nanosec
+            const stamp =
+                odomMessage.header && odomMessage.header.stamp
+                ? odomMessage.header.stamp.sec + odomMessage.header.stamp.nanosec * 1e-9
+                : null;
+
+            if (stamp != null && this.lastPose.t != null) {
+                const dt = Math.max(1e-3, stamp - this.lastPose.t);
+                const dx = pose.position.x - this.lastPose.x;
+                const dy = pose.position.y - this.lastPose.y;
+                speed = Math.hypot(dx, dy) / dt;
+            }
+
+            if (stamp != null) {
+                this.lastPose = { x: pose.position.x, y: pose.position.y, t: stamp };
+            }
+            }
+
+            this.robotStatus.speed = speed;
         },
 
         goToWaypoint: function(waypointKey) {
