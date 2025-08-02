@@ -1,0 +1,96 @@
+<?xml version="1.0" ?>
+<!-- Generated using onshape-to-robot -->
+<!-- Onshape document_id: 4757b8f98f7afcc7c3655639 -->
+<robot name="fastbot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:property name="PI" value="3.141592653589793" />
+  <xacro:macro name="fastbot_body" params="robot_name">
+
+    <!-- Link base_link -->
+    <link name="${robot_name}_base_link">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://fastbot_description/onshape/new_assets/fastbotchassis.dae"/>
+            </geometry>
+        </visual>
+    </link>
+
+
+    <!-- Link wheel_right -->
+    <link name="${robot_name}_wheel_right">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://fastbot_description/onshape/new_assets/wheeldae.dae"/>
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- Joint from fastbot_motor to wheel_d65x25_v1 -->
+    <joint name="${robot_name}_right_wheel" type="continuous">
+        <origin xyz="-0.04091 -0.0479 0.014" rpy="0 0 1.5708"/>
+        <parent link="${robot_name}_base_link"/>
+        <child link="${robot_name}_wheel_right"/>
+        <axis xyz="1 0 0"/>
+    </joint>
+
+
+    <!-- Link _wheel_left -->
+    <link name="${robot_name}_wheel_left">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://fastbot_description/onshape/new_assets/wheeldae.dae"/>
+            </geometry>
+        </visual>
+    </link>
+
+    <!-- Joint from fastbot_motor to wheel_d65x25_v1 -->
+    <joint name="${robot_name}_left_wheel" type="continuous">
+        <origin xyz="-0.04091 0.0479 0.014" rpy="0 0 -1.5708"/>
+        <parent link="${robot_name}_base_link"/>
+        <child link="${robot_name}_wheel_left"/>
+        <axis xyz="-1 0 0"/>
+    </joint>
+
+
+    <!-- Link lslidar_n10 -->
+    <link name="${robot_name}_lidar">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://fastbot_description/onshape/new_assets/lydar.dae"/>
+            </geometry>
+            <material name="lslidar_n10_material">
+                <color rgba="0.0980392 0.0980392 0.0980392 1.0"/>
+            </material>
+        </visual>
+    </link>
+
+    <!-- Joint from fastbot_chassis to lslidar_n10 -->
+    <joint name="${robot_name}_lidar" type="fixed">
+        <origin xyz="0 0 0.108" rpy="0.0 0.0 0"/>
+        <parent link="${robot_name}_base_link"/>
+        <child link="${robot_name}_lidar"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+
+
+    <!-- Link raspicam -->
+    <link name="${robot_name}_camera">
+    </link>
+
+    <!-- Joint from fastbot_chassis to raspicam -->
+    <joint name="${robot_name}_camera" type="fixed">
+        <origin xyz="0.087 0 0.087" rpy="0 0 0"/>
+        <parent link="${robot_name}_base_link"/>
+        <child link="${robot_name}_camera"/>
+        <axis xyz="0 0 1"/>
+    </joint>
+
+
+
+      </xacro:macro>
+
+</robot>
