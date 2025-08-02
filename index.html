@@ -190,6 +190,21 @@
     .cam-box { height: 240px; background: #000; border-radius: 12px; display: grid; place-items: center; overflow: hidden; }
 
     .help { color: var(--muted); font-size: .9rem; }
+    /* ADDED: center the 3D viewer contents */
+    #div3DViewer { 
+    display: grid; 
+    place-items: center; 
+    }
+
+    /* ADDED: center any canvas/img injected by ROS3D */
+    #div3DViewer canvas,
+    #div3DViewer img {
+    margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+    display: block;
+    }
+
   </style>
 </head>
 <body>
@@ -241,7 +256,7 @@
               <small>Speed</small>
             </div>
             <div class="chip">
-              <div class="v">{{ robotStatus.battery }}%</div>
+              <div class="v">{{ robotStatus.battery.toFixed(2) }}%</div>
               <small>Battery</small>
             </div>
           </div>
