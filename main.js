@@ -44,9 +44,9 @@ var app = new Vue({
         odomListener: null,
         // Waypoints
         waypoints: {
-            'sofa': { x: -2.63, y: -0.91, theta: -0.80, name: 'Sofa' },
-            'living_room': { x: 1.41, y: -1.93, theta: 0.99, name: 'Living Room' },
-            'kitchen': { x: 0.732, y: 2.53, theta: 0.46, name: 'Kitchen' }
+            'sofa': { x: -2.63, y: -0.91, theta: 1.0, name: 'Sofa' },
+            'living_room': { x: 1.41, y: -1.93, theta: 1.0, name: 'Living Room' },
+            'kitchen': { x: 0.732, y: 2.53, theta: 1.0, name: 'Kitchen' }
         }
     },
     // helper methods to connect to ROS
