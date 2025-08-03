@@ -6,7 +6,7 @@ var app = new Vue({
         ros: null,
         logs: [],
         loading: false,
-        rosbridge_address: 'wss://i-085b4acb4e840851d.robotigniteacademy.com/168606c0-8f5d-40f1-bb20-86ceb48094d8/rosbridge/',
+        rosbridge_address: 'wss://i-01e04ab1659676933.robotigniteacademy.com/adf7cfe2-bb59-4fba-9128-bd3dfddca28f/rosbridge/',
         port: '9090',
         // Robot Status for Task 2
         robotStatus: {
@@ -44,9 +44,9 @@ var app = new Vue({
         odomListener: null,
         // Waypoints
         waypoints: {
-            'sofa': { x: -2.65, y: -1.36, theta: -0.80, name: 'Sofa' },
-            'living_room': { x: 0.81, y: -1.29, theta: 0.99, name: 'Living Room' },
-            'kitchen': { x: 0.49, y: 2.97, theta: 0.46, name: 'Kitchen' }
+            'sofa': { x: -2.63, y: -0.91, theta: -0.80, name: 'Sofa' },
+            'living_room': { x: 1.41, y: -1.93, theta: 0.99, name: 'Living Room' },
+            'kitchen': { x: 0.732, y: 2.53, theta: 0.46, name: 'Kitchen' }
         }
     },
     // helper methods to connect to ROS
@@ -95,8 +95,11 @@ var app = new Vue({
             // Navigation goal publisher for waypoints
             this.navGoalTopic = new ROSLIB.Topic({
                 ros: this.ros,
-                name: '/move_base_simple/goal',
-                messageType: 'geometry_msgs/PoseStamped'
+                // name: '/move_base_simple/goal',
+                name: '/goal_pose',
+                // messageType: 'geometry_msgs/PoseStamped'
+                messageType: 'geometry_msgs/msg/PoseStamped'
+                
             });
             
             // Odometry listener for robot status
