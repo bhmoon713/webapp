@@ -6,7 +6,7 @@ var app = new Vue({
         ros: null,
         logs: [],
         loading: false,
-        rosbridge_address: 'wss://i-0986d4bc3c020af30.robotigniteacademy.com/cb3283ee-0686-4f9f-ba69-7bdf11aa89b7/rosbridge/',
+        rosbridge_address: 'wss://i-02b27d9ebb5fbd7fc.robotigniteacademy.com/697b925d-967f-4df9-8b75-9da4d5601dce/rosbridge/',
         port: '9090',
         // Robot Status for Task 2
         robotStatus: {
@@ -224,6 +224,8 @@ var app = new Vue({
                 this.cameraStatus = 'Camera unavailable';
             }
         },
+
+
 
         unsetCamera: function() {
             document.getElementById('cameraViewer').innerHTML = '';

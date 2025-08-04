@@ -28,7 +28,7 @@
   <script type="text/javascript" src="ros2d.js"></script>
 
   <!-- Camera streaming -->
-  <script src="mjpegcanvas.min.js" type="text/javascript"></script>
+  <script type="text/javascript" src="mjpegcanvas.min.js"></script>
 
   <!-- 2D map and 3D robot Visualization libs -->
   <script src="https://cdn.jsdelivr.net/npm/easeljs/lib/easeljs.min.js"></script>
@@ -49,7 +49,7 @@
     <div class="topbar py-3">
       <div class="container-fluid d-flex flex-wrap align-items-center">
         <div class="mr-auto d-flex align-items-center mb-2 mb-md-0">
-          <span class="brand h4 mb-0">FastBot Console</span>
+          <span class="brand h4 mb-0">Moon's FastBot Console</span>
         </div>
 
         <div class="input-group input-group-sm" style="max-width: 560px;">
@@ -120,10 +120,10 @@
 
       <!-- Center column -->
       <div class="d-grid" style="display:grid; grid-template-rows: 1fr auto; gap: 16px;">
-        <div class="panel">
+        <div class="panel fixed-height">
           <div class="panel-body">
             <h6 class="mb-2">Environment Map</h6>
-            <div class="viewer" id="mapViewer">
+              <div class="viewer tall" id="mapViewer">
               <div class="loading" v-if="!mapLoaded">Loading map…</div>
             </div>
           </div>
@@ -132,7 +132,7 @@
         <div class="panel">
           <div class="panel-body">
             <h6 class="mb-2">Robot 3D Model</h6>
-            <div class="viewer tall" id="div3DViewer">
+              <div class="viewer tall" id="div3DViewer">
               <div class="loading" v-if="!robot3DLoaded">Loading 3D model…</div>
             </div>
           </div>
@@ -146,6 +146,7 @@
           <div class="cam-box mb-3" id="cameraViewer">
             <div class="loading" v-if="!cameraLoaded">{{ cameraStatus }}</div>
           </div>
+          
 
           <h6 class="mb-2">Waypoints</h6>
           <div class="list-grid mb-3">
@@ -165,7 +166,7 @@
             @click="emergencyStop"
             :disabled="!connected"
           >
-            EMERGENCY STOP
+            STOP
           </button>
         </div>
       </div>
