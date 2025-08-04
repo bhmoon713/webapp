@@ -6,7 +6,7 @@ var app = new Vue({
         ros: null,
         logs: [],
         loading: false,
-        rosbridge_address: 'wss://i-01e04ab1659676933.robotigniteacademy.com/adf7cfe2-bb59-4fba-9128-bd3dfddca28f/rosbridge/',
+        rosbridge_address: 'wss://i-0986d4bc3c020af30.robotigniteacademy.com/cb3283ee-0686-4f9f-ba69-7bdf11aa89b7/rosbridge/',
         port: '9090',
         // Robot Status for Task 2
         robotStatus: {
