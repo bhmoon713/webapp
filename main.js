@@ -1,385 +1,366 @@
 var app = new Vue({
-    el: '#app',
-    // storing the state of the page
-    data: {
-        connected: false,
-        ros: null,
-        logs: [],
-        loading: false,
-        rosbridge_address: 'wss://i-02b27d9ebb5fbd7fc.robotigniteacademy.com/697b925d-967f-4df9-8b75-9da4d5601dce/rosbridge/',
-        port: '9090',
-        // Robot Status for Task 2
-        robotStatus: {
-            speed: 0.0,
-            position: { x: 0.0, y: 0.0 },
-            orientation: 0.0,
-            battery: 100
-        },
-        controlMode: 'Manual',
-        isNavigating: false,
-        
-        // Visualization loading states
-        mapLoaded: false,
-        robot3DLoaded: false,
-        cameraLoaded: false,
-        cameraStatus: 'Connecting to camera...',
-        // 3D stuff
-        viewer: null,
-        tfClient: null,
-        urdfClient: null,
-        // 2D map
-        map2D: null,
-        // Camera
-        cameraViewer: null,
-        // Joystick
-        joystick: null,
-        
-        // speed
-        lastPose: { x: null, y: null, t: null },
+  el: '#app',
 
-        
-        // ROS Topics
-        cmdVelTopic: null,
-        navGoalTopic: null,
-        odomListener: null,
-        // Waypoints
-        waypoints: {
-            'sofa': { x: -2.63, y: -0.91, theta: 1.0, name: 'Sofa' },
-            'living_room': { x: 1.41, y: -1.93, theta: 1.0, name: 'Living Room' },
-            'kitchen': { x: 0.732, y: 2.53, theta: 1.0, name: 'Kitchen' }
-        }
+  computed: {
+    ws_address() { return `${this.rosbridge_address}`; },
+  },
+
+  data: {
+    connected: false,
+    ros: null,
+    logs: [],
+    loading: false,
+    topic: null,
+    message: null,
+    rosbridge_address: 'wss://i-0a6c68ffe37aa397b.robotigniteacademy.com/7c1b40e8-0db2-4023-be99-bc4666011555/rosbridge/',
+    port: '9090',
+
+    // Robot Status (shown in sidebar)
+    robotStatus: {
+      speed: 0.0,
+      speedAngular: 0.0,
+      position: { x: 0.0, y: 0.0 },
+      orientation: 0.0,
+      battery: 100,
+      lastTwistAt: 0,
+      lastOdomAt: 0,
     },
-    // helper methods to connect to ROS
-    methods: {
-        connect: function() {
-            this.loading = true
-            this.ros = new ROSLIB.Ros({
-                url: this.rosbridge_address,
-                groovyCompatibility: false
-            })
-            this.ros.on('connection', () => {
-                this.logs.unshift((new Date()).toTimeString() + ' - Connected!')
-                this.connected = true
-                this.loading = false
-                this.setupROSCommunication()
-                this.setup3DViewer()
-                this.setup2DMap()
-                this.setupCamera()
-                this.setupJoystick()
-            })
-            this.ros.on('error', (error) => {
-                this.logs.unshift((new Date()).toTimeString() + ` - Error: ${error}`)
-            })
-            this.ros.on('close', () => {
-                this.logs.unshift((new Date()).toTimeString() + ' - Disconnected!')
-                this.connected = false
-                this.loading = false
-                this.unset3DViewer()
-                this.unsetCamera()
-                this.unsetMap()
-                this.unsetJoystick()
-            })
-        },
-        disconnect: function() {
-            this.ros.close()
-        },
 
-        setupROSCommunication: function() {
-            // Command velocity publisher for joystick
-            this.cmdVelTopic = new ROSLIB.Topic({
-                ros: this.ros,
-                name: '/fastbot_1/cmd_vel',
-                messageType: 'geometry_msgs/Twist'
-            });
-            
-            // Navigation goal publisher for waypoints
-            this.navGoalTopic = new ROSLIB.Topic({
-                ros: this.ros,
-                // name: '/move_base_simple/goal',
-                name: '/goal_pose',
-                // messageType: 'geometry_msgs/PoseStamped'
-                messageType: 'geometry_msgs/msg/PoseStamped'
-                
-            });
-            
-            // Odometry listener for robot status
-            this.odomListener = new ROSLIB.Topic({
-                ros: this.ros,
-                name: '/fastbot_1/odom',
-                messageType: 'nav_msgs/Odometry'
-            });
-            
-            this.odomListener.subscribe((message) => {
-                this.updateRobotStatus(message);
-            });
-        },
+    // ROS topic handles (top-level so we can unsubscribe cleanly)
+    twistSub: null,
+    odomSub:  null,
+    cmdVelTopic: null,
+    navGoalTopic: null,
+    cmdVelTopicName: '/fastbot_1/cmd_vel',
 
-        setup3DViewer() {
-            this.viewer = new ROS3D.Viewer({
-                background: '#cccccc',
-                divID: 'div3DViewer',
-                width: 400,
-                height: 300,
-                antialias: true,
-                fixedFrame: 'fastbot_1_odom'
-            })
+    // 2D stuff
+    mapRotated: false,
+    mapViewer: null,
+    mapGridClient: null,
+    interval: null,
 
-            // Add a grid.
-            this.viewer.addObject(new ROS3D.Grid({
-                color:'#0181c4',
-                cellSize: 0.5,
-                num_cells: 20
-            }))
+    // 3D stuff
+    viewer: null,
+    tfClient: null,
+    urdfClient: null,
 
-            // Setup a client to listen to TFs.
-            this.tfClient = new ROSLIB.TFClient({
-                ros: this.ros,
-                angularThres: 0.01,
-                transThres: 0.01,
-                rate: 10.0,
-                fixedFrame: 'fastbot_1_base_link'
-            })
+    // page content
+    menu_title: 'Connection',
 
-            // Setup the URDF client.
-            this.urdfClient = new ROS3D.UrdfClient({
-                ros: this.ros,
-                param: '/fastbot_1_robot_state_publisher:robot_description',
-                tfClient: this.tfClient,
-                // We use "path: location.origin + location.pathname"
-                // instead of "path: window.location.href" to remove query params,
-                // otherwise the assets fail to load
-                path: location.origin + location.pathname,
-                rootObject: this.viewer.scene,
-                loader: ROS3D.COLLADA_LOADER_2
-            })
-        },
-        unset3DViewer() {
-            document.getElementById('div3DViewer').innerHTML = ''
-            this.robot3DLoaded = false;
-        },
+    // joystick
+    dragging: false,
+    x: 'no',
+    y: 'no',
+    dragCircleStyle: { margin: '0px', top: '0px', left: '0px', display: 'none', width: '75px', height: '75px' },
+    joystick: { vertical: 0, horizontal: 0 },
 
-        setup2DMap: function() {
-            this.map2D = new ROS2D.Viewer({
-                divID: 'mapViewer',
-                width: 400,
-                height: 300
-            });
-            
-            // Add occupancy grid
-            var gridClient = new ROS2D.OccupancyGridClient({
-                ros: this.ros,
-                rootObject: this.map2D.scene,
-                topic: '/map'
-            });
-            
-            gridClient.on('change', () => {
-                this.mapLoaded = true;
-            });
-            
-            // Add robot marker
-            var robotMarker = new ROS2D.NavigationArrow({
-                size: 20,
-                strokeSize: 2,
-                fillColor: createjs.Graphics.getRGB(255, 128, 0),
-                pulse: true
-            });
-            
-            this.map2D.scene.addChild(robotMarker);
-            
-            // Update robot position on map
-            if (this.tfClient) {
-                this.tfClient.subscribe('fastbot_1_base_link', (tf) => {
-                    if (this.map2D && this.map2D.scene) {
-                        robotMarker.x = tf.translation.x * this.map2D.scene.scaleX;
-                        robotMarker.y = tf.translation.y * this.map2D.scene.scaleY;
-                        robotMarker.rotation = tf.rotation.z * 180 / Math.PI;
-                    }
-                });
-            }
-        },
+    // manual publisher
+    pubInterval: null,
+    buttonsOverride: false,
+    manualLinear: 0,
+    manualAngular: 0,
 
-        unsetMap: function() {
-            document.getElementById('mapViewer').innerHTML = '';
-        },
+    // Navigation
+    isNavigating: false,
+    estopActive: false,
 
-        setupCamera: function() {
-            try {
-                var without_wss = this.rosbridge_address.split('wss://')[1];
-                var domain = without_wss.split('/')[0] + '/' + without_wss.split('/')[1];
-                var host = domain + '/cameras';
-                
-                this.cameraViewer = new MJPEGCANVAS.Viewer({
-                    divID: 'cameraViewer',
-                    host: host,
-                    width: 400,
-                    height: 300,
-                    topic: '/fastbot_1/camera/image_raw',
-                    ssl: true,
-                });
-                
-                this.cameraLoaded = true;
-                this.cameraStatus = 'Camera connected';
-            } catch (error) {
-                console.error('Camera setup error:', error);
-                this.cameraStatus = 'Camera unavailable';
-            }
-        },
-
-
-
-        unsetCamera: function() {
-            document.getElementById('cameraViewer').innerHTML = '';
-        },
-
-        setupJoystick: function() {
-            this.joystick = nipplejs.create({
-                zone: document.getElementById('joystickContainer'),
-                mode: 'static',
-                position: { left: '50%', top: '50%' },
-                color: 'grey',
-                size: 120
-            });
-            
-            this.joystick.on('move', (evt, data) => {
-                if (!this.connected || !this.cmdVelTopic) return;
-                
-                var maxDistance = 60;
-                var distance = Math.min(data.distance, maxDistance);
-                const angle = data.angle.radian;
-
-                // Up (90°) → +linear.x ; Down (270°) → -linear.x
-                const linear  = (distance / maxDistance) * 0.5 * Math.sin(angle);
-
-                // Right (0°) → negative angular.z (turn right); Left (180°) → positive (turn left)
-                const angular = -(distance / maxDistance) * 1.0 * Math.cos(angle);
-                                
-                var message = new ROSLIB.Message({
-                    linear: { x: linear, y: 0, z: 0 },
-                    angular: { x: 0, y: 0, z: angular }
-                });
-                
-                this.cmdVelTopic.publish(message);
-                this.controlMode = 'Manual';
-            });
-            
-            this.joystick.on('end', () => {
-                if (this.connected && this.cmdVelTopic) {
-                    var message = new ROSLIB.Message({
-                        linear: { x: 0, y: 0, z: 0 },
-                        angular: { x: 0, y: 0, z: 0 }
-                    });
-                    this.cmdVelTopic.publish(message);
-                }
-            });
-        },
-
-        unsetJoystick: function() {
-            if (this.joystick) {
-                this.joystick.destroy();
-            }
-        },
-
-        updateRobotStatus: function(odomMessage) {
-            var pose = odomMessage.pose.pose;
-            var twist = odomMessage.twist.twist;
-            
-            // Update position
-            this.robotStatus.position.x = pose.position.x;
-            this.robotStatus.position.y = pose.position.y;
-            
-            // Update orientation (quaternion to euler)
-            var quat = pose.orientation;
-            var siny_cosp = 2 * (quat.w * quat.z + quat.x * quat.y);
-            var cosy_cosp = 1 - 2 * (quat.y * quat.y + quat.z * quat.z);
-            var theta = Math.atan2(siny_cosp, cosy_cosp);
-            this.robotStatus.orientation = theta * 180 / Math.PI;
-            
-            // Update speed (prefer twist, fallback to pose delta)
-            let speed = 0;
-            if (odomMessage.twist && odomMessage.twist.twist) {
-            const lin = odomMessage.twist.twist.linear || {x:0,y:0};
-            speed = Math.hypot(lin.x || 0, lin.y || 0);
-            }
-
-            // Fallback: compute from pose if twist is missing/zero
-            if (!speed || speed < 1e-4) {
-            // ROS 2 stamp: sec + nanosec
-            const stamp =
-                odomMessage.header && odomMessage.header.stamp
-                ? odomMessage.header.stamp.sec + odomMessage.header.stamp.nanosec * 1e-9
-                : null;
-
-            if (stamp != null && this.lastPose.t != null) {
-                const dt = Math.max(1e-3, stamp - this.lastPose.t);
-                const dx = pose.position.x - this.lastPose.x;
-                const dy = pose.position.y - this.lastPose.y;
-                speed = Math.hypot(dx, dy) / dt;
-            }
-
-            if (stamp != null) {
-                this.lastPose = { x: pose.position.x, y: pose.position.y, t: stamp };
-            }
-            }
-
-            this.robotStatus.speed = speed;
-        },
-
-        goToWaypoint: function(waypointKey) {
-            if (!this.connected || !this.navGoalTopic) return;
-            
-            var waypoint = this.waypoints[waypointKey];
-            this.isNavigating = true;
-            this.controlMode = 'Navigation to ' + waypoint.name;
-            
-            var goal = new ROSLIB.Message({
-                header: {
-                    frame_id: 'map',
-                    stamp: {
-                        sec: Math.floor(Date.now() / 1000),
-                        nanosec: (Date.now() % 1000) * 1000000
-                    }
-                },
-                pose: {
-                    position: { x: waypoint.x, y: waypoint.y, z: 0.0 },
-                    orientation: {
-                        x: 0.0, y: 0.0,
-                        z: Math.sin(waypoint.theta / 2),
-                        w: Math.cos(waypoint.theta / 2)
-                    }
-                }
-            });
-            
-            this.navGoalTopic.publish(goal);
-            
-            // Reset navigation state after 5 seconds
-            setTimeout(() => {
-                this.isNavigating = false;
-                this.controlMode = 'Manual';
-            }, 5000);
-        },
-
-        emergencyStop: function() {
-            if (!this.connected || !this.cmdVelTopic) return;
-            
-            var message = new ROSLIB.Message({
-                linear: { x: 0, y: 0, z: 0 },
-                angular: { x: 0, y: 0, z: 0 }
-            });
-            
-            this.cmdVelTopic.publish(message);
-            this.controlMode = 'EMERGENCY STOP';
-            this.isNavigating = false;
-            
-            setTimeout(() => {
-                this.controlMode = 'Manual';
-            }, 3000);
-        }
-    },
-    
-    mounted: function() {
-        // Simulate battery level updates
-        setInterval(() => {
-            this.robotStatus.battery = Math.max(20, 100 - Math.random() * 3);
-        }, 5000);
+    // Waypoints
+    waypoints: {
+      sofa:         { x: -2.63, y: -0.91, theta: 1.0, name: 'Sofa' },
+      living_room:  { x:  1.41, y: -1.93, theta: 1.0, name: 'Living Room' },
+      kitchen:      { x:  0.732, y:  2.53, theta: 1.0, name: 'Kitchen' }
     }
-})
+  },
+
+  methods: {
+    connect() {
+      this.loading = true;
+      this.ros = new ROSLIB.Ros({ url: this.rosbridge_address, groovyCompatibility: false });
+
+      this.ros.on('connection', () => {
+        this.logs.unshift(new Date().toTimeString() + ' - Connected!');
+        this.connected = true;
+        this.loading = false;
+
+        this.setupROSCommunication();
+        this.autoDetectCmdVelTopic().then(name => this.subscribeTwist(name));
+
+        this.setup3DViewer();
+        this.setCamera();
+
+        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 380, height: 360 });
+        this.mapGridClient = new ROS2D.OccupancyGridClient({
+          ros: this.ros, rootObject: this.mapViewer.scene, continuous: true,
+        });
+        this.mapGridClient.on('change', () => {
+          this.mapViewer.scaleToDimensions(this.mapGridClient.currentGrid.width,
+                                           this.mapGridClient.currentGrid.height);
+          this.mapViewer.shift(this.mapGridClient.currentGrid.pose.position.x,
+                               this.mapGridClient.currentGrid.pose.position.y);
+          if (!this.mapRotated) {
+            const canvas = document.querySelector('#map canvas');
+            if (canvas) {
+              canvas.style.transform = 'rotate(90deg)';
+              canvas.style.transformOrigin = 'center center';
+              const mapDiv = document.getElementById('map');
+              if (mapDiv) mapDiv.style.overflow = 'visible';
+              this.mapRotated = true;
+            }
+          }
+        });
+
+        // start manual publish loop AFTER topics are set up
+        this.pubInterval = setInterval(this.publish, 100); // ~10 Hz
+      });
+
+      this.ros.on('error', (error) => {
+        this.logs.unshift(new Date().toTimeString() + ` - Error: ${error}`);
+      });
+
+      this.ros.on('close', () => {
+        this.logs.unshift(new Date().toTimeString() + ' - Disconnected!');
+        this.connected = false;
+        this.loading = false;
+
+        this.unset3DViewer();
+        if (this.pubInterval) { clearInterval(this.pubInterval); this.pubInterval = null; }
+        const map = document.getElementById('map'); if (map) map.innerHTML = '';
+
+        try { if (this.twistSub) this.twistSub.unsubscribe(); } catch(e) {}
+        try { if (this.odomSub)  this.odomSub.unsubscribe(); }  catch(e) {}
+        this.twistSub = null;
+        this.odomSub  = null;
+        this.cmdVelTopic = null;
+        this.navGoalTopic = null;
+      });
+    },
+
+    // SINGLE publish() (removed the duplicate)
+    publish() {
+      if (!this.connected || !this.cmdVelTopic) return;
+
+      const useButtons = this.buttonsOverride && !this.estopActive;
+      const joyActive =
+        Math.abs(this.joystick.vertical)   > 0.01 ||
+        Math.abs(this.joystick.horizontal) > 0.01;
+
+      // Let Nav2 drive unless user explicitly overrides
+      if (this.isNavigating && !useButtons && !joyActive) return;
+
+      // Don't spam zeros
+      if (!useButtons && !joyActive) return;
+
+      const lin = useButtons ? this.manualLinear  : this.joystick.vertical;
+      const ang = useButtons ? this.manualAngular : this.joystick.horizontal;
+
+      const msg = new ROSLIB.Message({
+        linear:  { x: lin, y: 0, z: 0 },
+        angular: { x: 0,  y: 0, z: -ang } // right = +
+      });
+      this.cmdVelTopic.publish(msg);
+    },
+
+    disconnect() { this.ros && this.ros.close(); },
+
+    setTopic() {
+      this.topic = new ROSLIB.Topic({
+        ros: this.ros,
+        name: '/fastbot_1/cmd_vel',
+        messageType: 'geometry_msgs/msg/Twist' // ROS 2
+      });
+    },
+
+    forward()  { this.buttonsOverride = true; this.manualLinear =  0.2; this.manualAngular =  0.0; },
+    backward() { this.buttonsOverride = true; this.manualLinear = -0.2; this.manualAngular =  0.0; },
+    turnLeft() { this.buttonsOverride = true; this.manualLinear =  0.0; this.manualAngular = -0.5; },
+    turnRight(){ this.buttonsOverride = true; this.manualLinear =  0.0; this.manualAngular = +0.5; },
+    stop()     { this.buttonsOverride = false; this.manualLinear = 0.0;  this.manualAngular = 0.0; },
+
+    setCamera() {
+      const without_wss = this.rosbridge_address.split('wss://')[1];
+      const domain = without_wss.split('/')[0] + '/' + without_wss.split('/')[1];
+      const host = domain + '/cameras';
+      new MJPEGCANVAS.Viewer({
+        divID: 'divCamera', host, width: 500, height: 360,
+        topic: '/fastbot_1/camera/image_raw', ssl: true,
+      });
+    },
+
+    // joystick handlers
+    sendCommand() {
+      const topic = new ROSLIB.Topic({
+        ros: this.ros,
+        name: '/fastbot_1/cmd_vel',
+        messageType: 'geometry_msgs/msg/Twist'
+      });
+      topic.publish(new ROSLIB.Message({
+        linear: { x: 0.2, y: 0, z: 0 },
+        angular:{ x: 0,   y: 0, z: 0.5 }
+      }));
+    },
+    startDrag() { this.dragging = true; this.x = this.y = 0; },
+    stopDrag()  { this.dragging = false; this.x = this.y = 'no'; this.dragCircleStyle.display = 'none'; this.resetJoystickVals(); },
+    doDrag(event) {
+      if (!this.dragging) return;
+      this.x = event.offsetX; this.y = event.offsetY;
+      const ref = document.getElementById('dragstartzone');
+      this.dragCircleStyle.display = 'inline-block';
+      const minTop  = ref.offsetTop  - parseInt(this.dragCircleStyle.height) / 2;
+      const top     = this.y + minTop;
+      this.dragCircleStyle.top  = `${top}px`;
+      const minLeft = ref.offsetLeft - parseInt(this.dragCircleStyle.width) / 2;
+      const left    = this.x + minLeft;
+      this.dragCircleStyle.left = `${left}px`;
+      this.setJoystickVals();
+    },
+    setJoystickVals() {
+      this.joystick.vertical   = -((this.y / 200) - 0.5);
+      this.joystick.horizontal =  +((this.x / 200) - 0.5);
+    },
+    resetJoystickVals() { this.joystick.vertical = 0; this.joystick.horizontal = 0; },
+
+    setup3DViewer() {
+      this.viewer = new ROS3D.Viewer({
+        background: '#cccccc', divID: 'div3DViewer', width: 340, height: 280,
+        antialias: true, fixedFrame: 'fastbot_1/odom'
+      });
+      this.viewer.addObject(new ROS3D.Grid({ color:'#0181c4', cellSize: 0.5, num_cells: 20 }));
+      this.tfClient = new ROSLIB.TFClient({
+        ros: this.ros, angularThres: 0.01, transThres: 0.01, rate: 10.0, fixedFrame: 'fastbot_1_base_link'
+      });
+      this.urdfClient = new ROS3D.UrdfClient({
+        ros: this.ros, param: '/fastbot_1_robot_state_publisher:robot_description',
+        tfClient: this.tfClient, path: location.origin + location.pathname,
+        rootObject: this.viewer.scene, loader: ROS3D.COLLADA_LOADER_2
+      });
+    },
+    unset3DViewer() { const d = document.getElementById('div3DViewer'); if (d) d.innerHTML = ''; },
+
+    setupROSCommunication() {
+      // subs & pubs used elsewhere
+      this.twistSub = new ROSLIB.Topic({
+        ros: this.ros, name: '/fastbot_1/cmd_vel', messageType: 'geometry_msgs/msg/Twist'
+      });
+      this.cmdVelTopic = new ROSLIB.Topic({
+        ros: this.ros, name: '/fastbot_1/cmd_vel', messageType: 'geometry_msgs/msg/Twist'
+      });
+      this.twistSub.subscribe((msg) => {
+        this.robotStatus.speed        = Number((msg.linear  && msg.linear.x)  || 0);
+        this.robotStatus.speedAngular = Number((msg.angular && msg.angular.z) || 0);
+        this.robotStatus.lastTwistAt  = Date.now();
+      });
+
+      this.odomSub = new ROSLIB.Topic({
+        ros: this.ros, name: '/fastbot_1/odom', messageType: 'nav_msgs/msg/Odometry'
+      });
+      this.odomSub.subscribe((odom) => {
+        const p = odom.pose.pose.position;
+        const q = odom.pose.pose.orientation;
+        this.robotStatus.position = { x: Number((p && p.x) || 0), y: Number((p && p.y) || 0) };
+        const siny_cosp = 2 * ((q.w||0) * (q.z||0) + (q.x||0) * (q.y||0));
+        const cosy_cosp = 1 - 2 * ((q.y||0) * (q.y||0) + (q.z||0) * (q.z||0));
+        const yaw = Math.atan2(siny_cosp, cosy_cosp);
+        this.robotStatus.orientation = (yaw * 180) / Math.PI;
+        this.robotStatus.lastOdomAt  = Date.now();
+      });
+
+      this.navGoalTopic = new ROSLIB.Topic({
+        ros: this.ros, name: '/goal_pose', messageType: 'geometry_msgs/msg/PoseStamped'
+      });
+    },
+
+    goToWaypoint(waypointKey) {
+      if (!this.connected || !this.navGoalTopic) return;
+      const wp = this.waypoints[waypointKey];
+      this.isNavigating = true;
+      this.controlMode = 'Navigation to ' + wp.name;
+
+      const now = Date.now();
+      const sec = Math.floor(now / 1000);
+      const nsec = (now % 1000) * 1e6;
+
+      const half = wp.theta / 2.0;
+      const qz = Math.sin(half);
+      const qw = Math.cos(half);
+
+      const goal = new ROSLIB.Message({
+        header: { frame_id: 'map', stamp: { sec, nanosec: nsec } },
+        pose: { position: { x: wp.x, y: wp.y, z: 0.0 }, orientation: { x: 0.0, y: 0.0, z: qz, w: qw } }
+      });
+      this.navGoalTopic.publish(goal);
+
+      setTimeout(() => { this.isNavigating = false; this.controlMode = 'Manual'; }, 5000);
+    },
+
+    emergencyStop() {
+      if (!this.connected || !this.cmdVelTopic) return;
+      this.estopActive = true;
+      this.isNavigating = false;
+      this.controlMode = 'EMERGENCY STOP';
+
+      const zero = new ROSLIB.Message({ linear: { x:0, y:0, z:0 }, angular: { x:0, y:0, z:0 } });
+      let count = 0;
+      const t = setInterval(() => {
+        this.cmdVelTopic.publish(zero);
+        if (++count >= 20) { clearInterval(t); this.estopActive = false; this.controlMode = 'Manual'; }
+      }, 50);
+    },
+
+    autoDetectCmdVelTopic() {
+      return new Promise((resolve) => {
+        this.ros.getTopics((res) => {
+          const list = (res && res.topics) || [];
+          const prefer = [
+            '/fastbot_1/cmd_vel_smoothed','/cmd_vel_smoothed','/fastbot_1/cmd_vel','/cmd_vel','/nav2_controller/cmd_vel'
+          ];
+          const found = prefer.find(t => list.includes(t)) || list.find(t => /cmd_vel/.test(t));
+          resolve(found || this.cmdVelTopicName);
+        }, () => resolve(this.cmdVelTopicName));
+      });
+    },
+
+    subscribeTwist(name) {
+      if (this.twistSub) { try { this.twistSub.unsubscribe(); } catch(e) {} this.twistSub = null; }
+      this.cmdVelTopicName = name;
+      this.twistSub = new ROSLIB.Topic({
+        ros: this.ros, name, messageType: 'geometry_msgs/msg/Twist'
+      });
+      this.twistSub.subscribe((msg) => {
+        const lin = Number((msg.linear  && msg.linear.x) || 0);
+        const ang = Number((msg.angular && msg.angular.z) || 0);
+        this.robotStatus.speed        = lin;
+        this.robotStatus.speedAngular = ang;
+        this.robotStatus.lastTwistAt  = Date.now();
+      });
+    },
+  },
+
+mounted() {
+// your existing mouseup listener
+window.addEventListener('mouseup', this.stopDrag);
+
+// existing connection check every 10s
+this.interval = setInterval(() => {
+    if (this.ros && this.ros.isConnected) {
+    this.ros.getNodes(() => {}, () => {});
+    }
+}, 10000);
+
+// --- Simulated battery drain every 5s ---
+this.batteryInterval = setInterval(() => {
+    // subtract 1–3% randomly
+    this.robotStatus.battery -= Math.random() * 3;
+
+    // clamp between 0 and 100
+    if (this.robotStatus.battery < 0) this.robotStatus.battery = 0;
+    if (this.robotStatus.battery > 100) this.robotStatus.battery = 100;
+}, 5000);
+},
+beforeDestroy() {
+// clean up timers
+if (this.interval) clearInterval(this.interval);
+if (this.batteryInterval) clearInterval(this.batteryInterval);
+window.removeEventListener('mouseup', this.stopDrag);
+},
+
+});
