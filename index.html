@@ -1,216 +1,229 @@
 <html>
+
 <head>
-  <title>Moon's Robot Cafe !</title>
-  <!-- Bootstrap -->
-  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
-  <!-- ROS stuff -->
-  <script src="https://cdn.jsdelivr.net/npm/easeljs/lib/easeljs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/eventemitter2/lib/eventemitter2.min.js"></script>
-  <!-- <script src="https://s3.eu-west-1.amazonaws.com/rosject.io/js/roslib.min.js"></script> -->
-  <script src="./libs/roslib.min.js"></script>
-  <script src="ros2d.js"></script>
-  <script src="mjpegcanvas.min.js"></script>
+    <title>Moon's Robot Cafe !</title>
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- ROS stuff -->
+    <script src="https://cdn.jsdelivr.net/npm/easeljs/lib/easeljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/eventemitter2/lib/eventemitter2.min.js"></script>
+    <!-- <script src="https://s3.eu-west-1.amazonaws.com/rosject.io/js/roslib.min.js"></script> -->
+    <script src="./libs/roslib.min.js"></script>
+    <script src="ros2d.js"></script>
+    <script src="mjpegcanvas.min.js"></script>
 
-  <!-- 3D visualization -->
-  <script src="./libs/three.min.js"></script>
-  <script src="./libs/ColladaLoader.js"></script>
-  <script src="./libs/ColladaLoader2.js"></script>
-  <script src="./libs/STLLoader.js"></script>
-  <script src="./libs/ros3d.min.js"></script>
+    <!-- 3D visualization -->
+    <script src="./libs/three.min.js"></script>
+    <script src="./libs/ColladaLoader.js"></script>
+    <script src="./libs/ColladaLoader2.js"></script>
+    <script src="./libs/STLLoader.js"></script>
+    <script src="./libs/ros3d.min.js"></script>
 
-  <!-- Vue -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
+    <!-- Vue -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
 
-  <style>
-    /* Joystick */
-    #dragstartzone {
-      position: relative; display: inline-block; width: 200px; height: 200px;
-      border: 1px solid #333; border-radius: 50%; user-select: none;
-    }
-    #dragCircle {
-      position: absolute; border: 1px solid transparent; border-radius: 50%;
-      background-color: rgba(0,0,0,.3); user-select: none;
-    }
-    #dragCircle:hover { background-color: lightcoral; }
+    <style>
+        /* Joystick */
+        #dragstartzone {
+            position: relative;
+            display: inline-block;
+            width: 200px;
+            height: 200px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            user-select: none;
+        }
 
-    /* Give map/camera a height so they’re visible */
-    #map, #divCamera { width: 100%; height: 320px; border: 1px solid #ddd; }
-  </style>
+        #dragCircle {
+            position: absolute;
+            border: 1px solid transparent;
+            border-radius: 50%;
+            background-color: rgba(0, 0, 0, .3);
+            user-select: none;
+        }
+
+        #dragCircle:hover {
+            background-color: lightcoral;
+        }
+
+        /* Give map/camera a height so they’re visible */
+        #map,
+        #divCamera {
+            width: 100%;
+            height: 320px;
+            border: 1px solid #ddd;
+        }
+    </style>
 </head>
 
 <!-- Make whole page a flex column so footer can push to bottom -->
+
 <body class="d-flex flex-column min-vh-100">
 
-  <!-- Header -->
-  <header class="header">
-    <div class="container">
-      <div class="jumbotron text-center my-1">
-        <h1>Moon's FastBot DashBoard!</h1>
-        <p>Let's connect our website to a ROS robot!</p>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main app (single Vue root) grows to fill space above footer -->
-  <main id="app" class="flex-grow-1">
-    <div class="container">
-      <!-- Row 1: Connection + Joystick + Values -->
-      <div class="row">
-        <div class="col-md-4">
-          <div class="card mb-3">
-            <div class="card-body">
-              <h3>{{ menu_title }}</h3>
-              <hr>
-              <label>ROSBridge address</label><br>
-              <input type="text" v-model="rosbridge_address" class="form-control form-control-sm" />
-              <button class="mt-3 btn btn-success btn-block" v-if="connected" @click="disconnect">Connected!</button>
-              <button class="mt-3 btn btn-primary btn-block" v-else @click="connect">Connect!</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="card mb-3">
-            <div class="card-body text-center">
-              <h2>Joystick</h2>
-              <hr>
-              <div id="dragstartzone" @mousedown="startDrag" @mousemove="doDrag"></div>
-              <div id="dragCircle" :style="dragCircleStyle"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="card mb-3">
-            <div class="card-body">
-              <h2 class="text-center">Joystick values</h2>
-              <hr>
-              <p>Vertical: {{ joystick.vertical.toFixed(3) }}</p>
-              <p>Horizontal: {{ joystick.horizontal.toFixed(3) }}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-        <!-- Row 2: Model (L) • Waypoints (M) • Status (R) -->
-        <div class="row align-items-stretch">
-        <!-- Left: Robot model display -->
-        <div class="col-12 col-md-4 my-2 d-flex">
-            <div class="card h-100 w-100">
-            <div class="card-body text-center">
-                <h5 class="card-title">Robot Model</h5>
-                <div id="div3DViewer" class="d-flex justify-content-center"></div>
-            </div>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="jumbotron text-center my-1">
+                <h1>Moon's FastBot DashBoard!</h1>
+                <p>Let's connect our website to a ROS robot!</p>
             </div>
         </div>
+    </header>
 
-      <!-- Row 4: Waypoints + Emergency Stop -->
-        <div class="col-12 col-md-4 my-2 d-flex">
-            <div class="card h-100 w-100">
-            <div class="card-body d-flex flex-column">
-                <h5 class="card-title mb-3">Waypoints</h5>
-
-                <!-- Waypoint buttons grid -->
-                <div class="row g-2">
-                <!-- One button per waypoint -->
-                <div class="col-6 col-lg-4" v-for="(wp, key) in waypoints" :key="key">
-                    <button
-                    class="btn btn-outline-primary w-100"
-                    :disabled="!connected || isNavigating || estopActive"
-                    @click="goToWaypoint(key)"
-                    >
-                    {{ wp.name }}
-                    </button>
-                </div>
-                </div>
-
-                <!-- Spacer to push E-Stop to bottom, then E-Stop -->
-                <div class="mt-auto pt-3 d-flex justify-content-center">
-                <button
-                    class="btn btn-danger"
-                    :disabled="!connected"
-                    @click="emergencyStop"
-                >
-                    EMERGENCY STOP
-                </button>
-                </div>
-            </div>
-            </div>
-        </div>
-
-        <!-- Right: Robot status dashboard -->
-        <div class="col-12 col-md-4 my-2 d-flex">
-            <div class="card h-100 w-100">
-            <div class="card-body">
-                <h5 class="card-title text-center">Robot Status</h5>
-
-                <div class="row text-center g-2">
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">{{ robotStatus.speed.toFixed(2) }} m/s</div>
-                    <small class="text-muted">Linear Speed</small>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">{{ robotStatus.speedAngular.toFixed(2) }} rad/s</div>
-                    <small class="text-muted">Angular Speed</small>
+    <!-- Main app (single Vue root) grows to fill space above footer -->
+    <main id="app" class="flex-grow-1">
+        <div class="container">
+            <!-- Row 1: Connection + Joystick + Values -->
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h3>{{ menu_title }}</h3>
+                            <hr>
+                            <label>ROSBridge address</label><br>
+                            <input type="text" v-model="rosbridge_address" class="form-control form-control-sm" />
+                            <button class="mt-3 btn btn-success btn-block" v-if="connected"
+                                @click="disconnect">Connected!</button>
+                            <button class="mt-3 btn btn-primary btn-block" v-else @click="connect">Connect!</button>
+                        </div>
                     </div>
                 </div>
 
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">X {{ robotStatus.position.x.toFixed(2) }} m</div>
-                    <small class="text-muted">Position</small>
-                    </div>
-                </div>
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">Y {{ robotStatus.position.y.toFixed(2) }} m</div>
-                    <small class="text-muted">Position</small>
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-body text-center">
+                            <h2>Joystick</h2>
+                            <hr>
+                            <div id="dragstartzone" @mousedown="startDrag" @mousemove="doDrag"></div>
+                            <div id="dragCircle" :style="dragCircleStyle"></div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">{{ robotStatus.orientation.toFixed(1) }} deg</div>
-                    <small class="text-muted">Orientation</small>
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h2 class="text-center">Joystick values</h2>
+                            <hr>
+                            <p>Vertical: {{ joystick.vertical.toFixed(3) }}</p>
+                            <p>Horizontal: {{ joystick.horizontal.toFixed(3) }}</p>
+                        </div>
                     </div>
                 </div>
-                <div class="col-6">
-                    <div class="border rounded p-2 h-100">
-                    <div class="h5 mb-0">{{ robotStatus.battery.toFixed(2) }}%</div>
-                    <small class="text-muted">Battery</small>
-                    </div>
-                </div>
-                </div>
-
             </div>
+
+            <!-- Row 2: Model (L) • Waypoints (M) • Status (R) -->
+            <div class="row align-items-stretch">
+                <!-- Left: Robot model display -->
+                <div class="col-12 col-md-4 my-2 d-flex">
+                    <div class="card h-100 w-100">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Robot Model</h5>
+                            <div id="div3DViewer" class="d-flex justify-content-center"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Row 4: Waypoints + Emergency Stop -->
+                <div class="col-12 col-md-4 my-2 d-flex">
+                    <div class="card h-100 w-100">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title text-center">Waypoints</h5>
+
+                            <!-- Waypoint buttons grid -->
+                            <div class="row g-2">
+                                <!-- One button per waypoint -->
+                                <div class="col-6 col-lg-4" v-for="(wp, key) in waypoints" :key="key">
+                                    <button class="btn btn-outline-primary w-100"
+                                        :disabled="!connected || isNavigating || estopActive"
+                                        @click="goToWaypoint(key)">
+                                        {{ wp.name }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Spacer to push E-Stop to bottom, then E-Stop -->
+                            <div class="mt-auto pt-3 d-flex justify-content-center">
+                                <button class="btn btn-danger" :disabled="!connected" @click="emergencyStop">
+                                    EMERGENCY STOP
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Robot status dashboard -->
+                <div class="col-12 col-md-4 my-2 d-flex">
+                    <div class="card h-100 w-100">
+                        <div class="card-body">
+                            <h5 class="card-title text-center">Robot Status</h5>
+
+                            <div class="row text-center g-2">
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">{{ robotStatus.speed.toFixed(2) }} m/s</div>
+                                        <small class="text-muted">Linear Speed</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">{{ robotStatus.speedAngular.toFixed(2) }} rad/s</div>
+                                        <small class="text-muted">Angular Speed</small>
+                                    </div>
+                                </div>
+
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">X {{ robotStatus.position.x.toFixed(2) }} m</div>
+                                        <small class="text-muted">Position</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">Y {{ robotStatus.position.y.toFixed(2) }} m</div>
+                                        <small class="text-muted">Position</small>
+                                    </div>
+                                </div>
+
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">{{ robotStatus.orientation.toFixed(1) }} deg</div>
+                                        <small class="text-muted">Orientation</small>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="border rounded p-2 h-100">
+                                        <div class="h5 mb-0">{{ robotStatus.battery.toFixed(2) }}%</div>
+                                        <small class="text-muted">Battery</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-        </div>
 
 
 
-      <!-- Row 3: Map & Camera -->
-      <div class="row">
-        <div class="col-md-6 my-2">
-          <h5 class="text-left">Map</h5>
-          <div id="map" class="d-flex justify-content-center align-items-center" 
-                style="height: 360px;">></div>
-        </div>
-        <div class="col-md-6 my-2">
-            <h5 class="text-left">Camera</h5>
-            <div id="divCamera" class="d-flex justify-content-center align-items-center" 
-                style="height: 360px;">
-                <!-- MJPEG Canvas will appear centered here -->
+            <!-- Row 3: Map & Camera -->
+            <div class="row">
+                <div class="col-md-6 my-2">
+                    <h5 class="text-left">Map</h5>
+                    <div id="map" class="d-flex justify-content-center align-items-center" style="height: 360px;">>
+                    </div>
+                </div>
+                <div class="col-md-6 my-2">
+                    <h5 class="text-left">Camera</h5>
+                    <div id="divCamera" class="d-flex justify-content-center align-items-center" style="height: 360px;">
+                        <!-- MJPEG Canvas will appear centered here -->
+                    </div>
+                </div>
             </div>
-        </div>
-      </div>
 
 
 
-<!-- 
+            <!-- 
         <div class="col-12 my-2">
         <div class="card">
             <div class="card-body text-center py-2">
@@ -228,20 +241,21 @@
         </div> -->
 
 
-  </main>
+    </main>
 
-  <!-- Footer pinned to bottom by mt-auto on a flex column body -->
-  <footer class="footer mt-auto bg-dark text-light py-3">
-    <div class="container">
-      <h5 class="mb-0">page ends here!</h5>
-    </div>
-  </footer>
+    <!-- Footer pinned to bottom by mt-auto on a flex column body -->
+    <footer class="footer mt-auto bg-dark text-light py-3">
+        <div class="container">
+            <h5 class="mb-0">page ends here!</h5>
+        </div>
+    </footer>
 
-  <!-- Load main.js with cache-buster -->
-  <script>
-    var script = document.createElement('script');
-    script.src = 'main.js?v=7.' + Date.now();
-    document.head.appendChild(script);
-  </script>
+    <!-- Load main.js with cache-buster -->
+    <script>
+        var script = document.createElement('script');
+        script.src = 'main.js?v=7.' + Date.now();
+        document.head.appendChild(script);
+    </script>
 </body>
+
 </html>
