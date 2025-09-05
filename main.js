@@ -364,3 +364,6 @@ var app = new Vue({
     },
 
 });
+
+
+        // make change for fatbot
