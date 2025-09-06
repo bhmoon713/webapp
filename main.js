@@ -12,7 +12,7 @@ var app = new Vue({
     loading: false,
     topic: null,
     message: null,
-    rosbridge_address: 'wss://i-0a6c68ffe37aa397b.robotigniteacademy.com/7c1b40e8-0db2-4023-be99-bc4666011555/rosbridge/',
+    rosbridge_address: 'wss://i-06042d1c854526af1.robotigniteacademy.com/03c1707c-7437-4bfe-9c9d-983855b83909/rosbridge/',
     port: '9090',
 
     // Robot Status (shown in sidebar)
@@ -199,7 +199,40 @@ var app = new Vue({
       }));
     },
     startDrag() { this.dragging = true; this.x = this.y = 0; },
-    stopDrag()  { this.dragging = false; this.x = this.y = 'no'; this.dragCircleStyle.display = 'none'; this.resetJoystickVals(); },
+    // stopDrag()  { this.dragging = false; this.x = this.y = 'no'; this.dragCircleStyle.display = 'none'; this.resetJoystickVals(); },
+    stopDrag() {
+    this.dragging = false;
+    this.x = this.y = 'no';
+    this.dragCircleStyle.display = 'none';
+    this.resetJoystickVals();        // reset joystick numbers to 0
+    this.buttonsOverride = false;    // prevent publish loop from re-sending motion
+
+    // Publish zero Twist immediately + short burst for safety
+    if (this.connected && this.cmdVelTopic) {
+        const zero = new ROSLIB.Message({
+        linear:  { x: 0, y: 0, z: 0 },
+        angular: { x: 0, y: 0, z: 0 }
+        });
+
+        // clear any existing zero-burst
+        if (this._zeroTimer) {
+        clearInterval(this._zeroTimer);
+        this._zeroTimer = null;
+        }
+
+        this.cmdVelTopic.publish(zero);   // once right away
+
+        let count = 0;
+        this._zeroTimer = setInterval(() => {
+        this.cmdVelTopic.publish(zero); // repeat for ~200 ms
+        if (++count >= 5) {
+            clearInterval(this._zeroTimer);
+            this._zeroTimer = null;
+        }
+        }, 50);
+    }
+    },
+
     doDrag(event) {
       if (!this.dragging) return;
       this.x = event.offsetX; this.y = event.offsetY;

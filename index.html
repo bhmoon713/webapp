@@ -92,45 +92,8 @@
                 <div class="col-md-4">
                     <div class="card mb-3">
                         <div class="card-body text-center">
-                            <h2>Joystick</h2>
+                            <h2>WayPoint</h2>
                             <hr>
-                            <div id="dragstartzone" @mousedown="startDrag" @mousemove="doDrag"></div>
-                            <div id="dragCircle" :style="dragCircleStyle"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="card mb-3">
-                        <div class="card-body">
-                            <h2 class="text-center">Joystick values</h2>
-                            <hr>
-                            <p>Vertical: {{ joystick.vertical.toFixed(3) }}</p>
-                            <p>Horizontal: {{ joystick.horizontal.toFixed(3) }}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Row 2: Model (L) • Waypoints (M) • Status (R) -->
-            <div class="row align-items-stretch">
-                <!-- Left: Robot model display -->
-                <div class="col-12 col-md-4 my-2 d-flex">
-                    <div class="card h-100 w-100">
-                        <div class="card-body text-center">
-                            <h5 class="card-title">Robot Model</h5>
-                            <div id="div3DViewer" class="d-flex justify-content-center"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Row 4: Waypoints + Emergency Stop -->
-                <div class="col-12 col-md-4 my-2 d-flex">
-                    <div class="card h-100 w-100">
-                        <div class="card-body d-flex flex-column">
-                            <h5 class="card-title text-center">Waypoints</h5>
-
-                            <!-- Waypoint buttons grid -->
                             <div class="row g-2">
                                 <!-- One button per waypoint -->
                                 <div class="col-6 col-lg-4" v-for="(wp, key) in waypoints" :key="key">
@@ -152,12 +115,62 @@
                     </div>
                 </div>
 
+                <div class="col-md-4">
+                    <div class="card mb-3">
+                        <div class="card-body text-center"> <!-- add text-center -->
+                            <h2 class="text-center">Joystick values</h2>
+                            <hr>
+                            <p>Vertical: {{ joystick.vertical.toFixed(3) }}</p>
+                            <p>Horizontal: {{ joystick.horizontal.toFixed(3) }}</p>
+
+                            <!-- Joystick container -->
+                            <div class="d-flex justify-content-center">
+                                <div id="joystick"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2: Model (L) • Joystick (M) • Status (R) -->
+            <div class="row align-items-stretch">
+                <!-- Left: Robot model display -->
+                <div class="col-12 col-md-4 my-2 d-flex">
+                    <div class="card h-100 w-100">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Robot Model</h5>
+                            <div id="div3DViewer" class="d-flex justify-content-center"></div>
+                        </div>
+                    </div>
+                </div>
+
+                        <!-- Row 2: Joystick (M) -->
+                        <div class="col-12 col-md-4 my-2 d-flex">
+                            <div class="card h-100 w-100">
+                                <div class="card-body d-flex flex-column">
+                                <h5 class="card-title text-center">JoyStick</h5>
+
+                                <!-- Center container -->
+                                <div class="d-flex justify-content-center align-items-center flex-grow-1">
+                                    <!-- Joystick pad -->
+                                    <div id="dragstartzone"
+                                        @mousedown="startDrag"
+                                        @mousemove="doDrag"
+                                        style="width:200px; height:200px; border:1px solid #000; border-radius:50%; position:relative;">
+                                    </div>
+
+                                    <!-- Joystick handle -->
+                                    <div id="dragCircle" :style="dragCircleStyle"></div>
+                                </div>
+                                </div>
+                            </div>
+                        </div>
+
                 <!-- Right: Robot status dashboard -->
                 <div class="col-12 col-md-4 my-2 d-flex">
                     <div class="card h-100 w-100">
                         <div class="card-body">
                             <h5 class="card-title text-center">Robot Status</h5>
-
                             <div class="row text-center g-2">
                                 <div class="col-6">
                                     <div class="border rounded p-2 h-100">
