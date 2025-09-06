@@ -88,7 +88,7 @@ var app = new Vue({
         this.setup3DViewer();
         this.setCamera();
 
-        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 325, height: 240 });
+        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 260, height: 280 });
         this.mapGridClient = new ROS2D.OccupancyGridClient({
           ros: this.ros, rootObject: this.mapViewer.scene, continuous: true,
         });

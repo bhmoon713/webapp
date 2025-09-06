@@ -37,6 +37,23 @@
     header.app-header { height: 56px; display: flex; align-items: center; }
     footer.app-footer { height: 36px; display: flex; align-items: center; }
 
+
+    .map-box{
+    width: 320px;           /* pick your size (or %); must be < card width */
+    height: 240px;
+    border: 1px solid #ddd;
+    display: flex;                  /* center any canvas the lib creates */
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;               /* avoid bleed */
+    }
+
+    .map-box canvas{
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    }
+
     /* Main takes the rest of the viewport */
     .app-main {
       height: calc(100vh - 56px - 36px);
@@ -207,8 +224,11 @@
               <div class="card">
                 <div class="card-body">
                   <h6 class="mb-2">Map</h6>
-                  <div class="tile-fill">
+                  <!-- <div class="tile-fill">
                     <div id="map" class="w-100 h-100"></div>
+                  </div> -->
+                  <div class="tile-fill">
+                    <div id="map" class="map-box mx-auto"></div>
                   </div>
                 </div>
               </div>
