@@ -12,7 +12,7 @@ var app = new Vue({
     loading: false,
     topic: null,
     message: null,
-    rosbridge_address: 'wss://i-06042d1c854526af1.robotigniteacademy.com/03c1707c-7437-4bfe-9c9d-983855b83909/rosbridge/',
+    rosbridge_address: 'wss://i-03f2c71ab6b014cd6.robotigniteacademy.com/881af87e-7a3f-47ea-b17a-6449a81dfb6a/rosbridge/',
     port: '9090',
 
     // Robot Status (shown in sidebar)
@@ -88,7 +88,7 @@ var app = new Vue({
         this.setup3DViewer();
         this.setCamera();
 
-        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 380, height: 360 });
+        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 325, height: 240 });
         this.mapGridClient = new ROS2D.OccupancyGridClient({
           ros: this.ros, rootObject: this.mapViewer.scene, continuous: true,
         });
@@ -181,7 +181,7 @@ var app = new Vue({
       const domain = without_wss.split('/')[0] + '/' + without_wss.split('/')[1];
       const host = domain + '/cameras';
       new MJPEGCANVAS.Viewer({
-        divID: 'divCamera', host, width: 500, height: 360,
+        divID: 'divCamera', host, width: 325, height: 310,
         topic: '/fastbot_1/camera/image_raw', ssl: true,
       });
     },
@@ -254,7 +254,7 @@ var app = new Vue({
 
     setup3DViewer() {
       this.viewer = new ROS3D.Viewer({
-        background: '#cccccc', divID: 'div3DViewer', width: 340, height: 280,
+        background: '#cccccc', divID: 'div3DViewer', width: 325, height: 280,
         antialias: true, fixedFrame: 'fastbot_1/odom'
       });
       this.viewer.addObject(new ROS3D.Grid({ color:'#0181c4', cellSize: 0.5, num_cells: 20 }));
