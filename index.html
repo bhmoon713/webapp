@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Moon's Robot Cafe !</title>
 
   <!-- Bootstrap -->
@@ -25,206 +26,239 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
 
   <style>
-    /* Slim header */
-    header.app-header { padding: .6rem 0; }
-    header .ros-label { font-size: .9rem; margin: 0 .5rem 0 0; }
+    /* Avoid flash of uncompiled Vue (shows both buttons) */
+    [v-cloak] { display: none; }
 
-    /* Same card heights in each row */
-    .row.equal > [class*="col-"] .card { height: 100%; }
+    /* ===== Page sizing: one screen, no scroll ===== */
+    html, body { height: 100%; margin: 0; }
+    body { overflow: hidden; }                /* no scrollbars */
 
-    /* Camera / Map boxes */
-    #map, #divCamera { width: 100%; height: 320px; border: 1px solid #ddd; }
+    /* Header/Footer fixed heights (tweak if needed) */
+    header.app-header { height: 56px; display: flex; align-items: center; }
+    footer.app-footer { height: 36px; display: flex; align-items: center; }
 
-    /* Joystick pad + handle */
+    /* Main takes the rest of the viewport */
+    .app-main {
+      height: calc(100vh - 56px - 36px);
+      overflow: hidden;
+    }
+
+    /* Dashboard grid: 2 rows, 3 columns via Bootstrap inside */
+    .dashboard {
+      height: 100%;
+      display: grid;
+      grid-template-rows: 1fr 1fr;           /* two equal rows */
+      grid-row-gap: .5rem;
+    }
+
+    /* Make each Bootstrap column stretch and cards fill height */
+    .row.equal { height: 100%; }
+    .row.equal > [class*="col-"] { display: flex; }
+    .row.equal > [class*="col-"] .card {
+      flex: 1;
+      min-height: 0;                          /* allow inner flex items to shrink */
+    }
+
+    /* Compact cards and let inner content scale */
+    .card-body { padding: .65rem; display: flex; flex-direction: column; min-height: 0; }
+    .tile-fill { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; }
+
+    /* Map / Camera fill their tiles */
+    #map, #divCamera { width: 100%; height: 100%; border: 1px solid #ddd; }
+
+    /* 3D viewer area fills its tile */
+    #div3DViewer { width: 100%; height: 100%; border: 1px solid #eee; }
+
+    /* Joystick pad + handle (smaller to fit) */
     #dragstartzone {
       position: relative; display: inline-block;
-      width: 240px; height: 240px;
+      width: 200px; height: 200px;
       border: 1px solid #333; border-radius: 50%; user-select: none;
     }
     #dragCircle {
-      position: absolute; width: 48px; height: 48px;
+      position: absolute; width: 44px; height: 44px;
       border-radius: 50%; background: rgba(0,0,0,.3);
-      transform: translate(-50%, -50%); /* keep handle truly centered on coords */
+      transform: translate(-50%, -50%);
       pointer-events: none;
     }
     #dragCircle:hover { background: rgba(255,0,0,.35); }
+
+    /* Slim header text */
+    .ros-label { font-size: .9rem; margin-right: .5rem; white-space: nowrap; }
   </style>
 </head>
 
 <body class="d-flex flex-column min-vh-100">
 
-  <!-- Header -->
-  <header class="app-header border-bottom">
-    <div class="container">
-      <div class="row align-items-center">
-        <!-- Title (L) -->
-        <div class="col-12 col-lg-4 mb-2 mb-lg-0">
-          <h2 class="h3 mb-0">Moon's FastBot DashBoard!</h2>
-        </div>
+  <!-- Vue now controls EVERYTHING inside this wrapper -->
+  <div id="app" v-cloak class="d-flex flex-column w-100">
 
-        <!-- ROSBridge address + input (C) -->
-        <div class="col-12 col-lg-5 mb-2 mb-lg-0 d-flex align-items-center">
-          <span class="ros-label">ROSBridge address</span>
-          <input
-            type="text"
-            v-model="rosbridge_address"
-            class="form-control form-control-sm"
-            placeholder="wss://..."
-          />
-        </div>
-
-        <!-- Connect / Connected (R) -->
-        <div class="col-12 col-lg-3 d-flex justify-content-lg-end">
-          <button class="btn btn-success" v-if="connected" @click="disconnect">Connected!</button>
-          <button class="btn btn-primary" v-else @click="connect">Connect!</button>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- Main -->
-  <main id="app" class="flex-grow-1">
-    <div class="container py-3">
-
-      <!-- ROW 1: Camera | Joystick | Robot Status -->
-      <div class="row equal">
-        <!-- Camera (TL) -->
-        <div class="col-12 col-md-6 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title mb-2">Camera</h5>
-              <div id="divCamera" class="d-flex justify-content-center align-items-center"></div>
-            </div>
+    <!-- ===== Header (fixed height) ===== -->
+    <header class="app-header border-bottom">
+      <div class="container">
+        <div class="row align-items-center">
+          <!-- Title -->
+          <div class="col-12 col-lg-4 mb-2 mb-lg-0">
+            <h2 class="h4 mb-0">Moon's FastBot DashBoard!</h2>
           </div>
-        </div>
-
-        <!-- Joystick (TM) -->
-        <div class="col-12 col-md-6 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body d-flex flex-column align-items-center">
-              <h5 class="card-title">JoyStick</h5>
-              <div class="small text-muted mb-2">
-                Vertical: {{ joystick.vertical.toFixed(3) }} &nbsp;|&nbsp;
-                Horizontal: {{ joystick.horizontal.toFixed(3) }}
-              </div>
-
-              <!-- Centered joystick -->
-              <div class="flex-grow-1 d-flex justify-content-center align-items-center w-100">
-                <div id="dragstartzone"
-                     @mousedown="startDrag"
-                     @mousemove="doDrag"></div>
-                <div id="dragCircle" :style="dragCircleStyle"></div>
-              </div>
-            </div>
+          <!-- ROSBridge input -->
+          <div class="col-12 col-lg-5 mb-2 mb-lg-0 d-flex align-items-center">
+            <span class="ros-label">ROSBridge address</span>
+            <input type="text" v-model="rosbridge_address" class="form-control form-control-sm" placeholder="wss://..." />
           </div>
-        </div>
-
-        <!-- Robot Status (TR) -->
-        <div class="col-12 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title text-center">Robot Status</h5>
-              <div class="row text-center">
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">{{ robotStatus.speed.toFixed(2) }} m/s</div>
-                    <small class="text-muted">Linear Speed</small>
-                  </div>
-                </div>
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">{{ robotStatus.speedAngular.toFixed(2) }} rad/s</div>
-                    <small class="text-muted">Angular Speed</small>
-                  </div>
-                </div>
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">X {{ robotStatus.position.x.toFixed(2) }} m</div>
-                    <small class="text-muted">Position</small>
-                  </div>
-                </div>
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">Y {{ robotStatus.position.y.toFixed(2) }} m</div>
-                    <small class="text-muted">Position</small>
-                  </div>
-                </div>
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">{{ robotStatus.orientation.toFixed(1) }} deg</div>
-                    <small class="text-muted">Orientation</small>
-                  </div>
-                </div>
-                <div class="col-6 mb-2">
-                  <div class="border rounded p-2">
-                    <div class="h5 mb-0">{{ robotStatus.battery.toFixed(2) }}%</div>
-                    <small class="text-muted">Battery</small>
-                  </div>
-                </div>
-              </div> <!-- row -->
-            </div>
+          <!-- Connect button (toggles) -->
+          <div class="col-12 col-lg-3 d-flex justify-content-lg-end">
+            <button class="btn btn-success btn-sm" v-if="connected" @click="disconnect">Connected!</button>
+            <button class="btn btn-primary btn-sm" v-else @click="connect">Connect!</button>
           </div>
         </div>
       </div>
+    </header>
 
-      <!-- ROW 2: Map | Robot Model | WayPoint -->
-      <div class="row equal">
-        <!-- Map (BL) -->
-        <div class="col-12 col-md-6 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title mb-2">Map</h5>
-              <div id="map" class="d-flex justify-content-center align-items-center"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Robot Model (BM) -->
-        <div class="col-12 col-md-6 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body">
-              <h5 class="card-title">Robot Model</h5>
-              <div id="div3DViewer" class="d-flex justify-content-center"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- WayPoint + E-Stop (BR) -->
-        <div class="col-12 col-lg-4 mb-3">
-          <div class="card">
-            <div class="card-body d-flex flex-column">
-              <h5 class="card-title text-center">WayPoint</h5>
-              <div class="row">
-                <div class="col-6 col-md-4 mb-2" v-for="(wp, key) in waypoints" :key="key">
-                  <button class="btn btn-outline-primary w-100"
-                          :disabled="!connected || isNavigating || estopActive"
-                          @click="goToWaypoint(key)">
-                    {{ wp.name }}
-                  </button>
+    <!-- ===== Main (fills remaining height) ===== -->
+    <main class="app-main">
+      <div class="container py-2 h-100">
+        <div class="dashboard">
+          <!-- -------- ROW 1 -------- -->
+          <div class="row equal">
+            <!-- Camera -->
+            <div class="col-12 col-md-6 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-2">Camera</h6>
+                  <div class="tile-fill">
+                    <div id="divCamera" class="w-100 h-100"></div>
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div class="mt-auto pt-2 text-center">
-                <button class="btn btn-danger" :disabled="!connected" @click="emergencyStop">
-                  EMERGENCY STOP
-                </button>
+            <!-- Joystick -->
+            <div class="col-12 col-md-6 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-1 text-center">JoyStick</h6>
+                  <div class="small text-muted text-center mb-2">
+                    V: {{ joystick.vertical.toFixed(3) }} | H: {{ joystick.horizontal.toFixed(3) }}
+                  </div>
+                  <div class="tile-fill">
+                    <div id="dragstartzone" @mousedown="startDrag" @mousemove="doDrag"></div>
+                    <div id="dragCircle" :style="dragCircleStyle"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Robot Status -->
+            <div class="col-12 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-2 text-center">Robot Status</h6>
+                  <div class="row text-center">
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">{{ robotStatus.speed.toFixed(2) }} m/s</div>
+                        <small class="text-muted">Linear</small>
+                      </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">{{ robotStatus.speedAngular.toFixed(2) }} rad/s</div>
+                        <small class="text-muted">Angular</small>
+                      </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">X {{ robotStatus.position.x.toFixed(2) }} m</div>
+                        <small class="text-muted">Pos</small>
+                      </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">Y {{ robotStatus.position.y.toFixed(2) }} m</div>
+                        <small class="text-muted">Pos</small>
+                      </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">{{ robotStatus.orientation.toFixed(1) }} deg</div>
+                        <small class="text-muted">Yaw</small>
+                      </div>
+                    </div>
+                    <div class="col-6 mb-2">
+                      <div class="border rounded p-2">
+                        <div class="h6 mb-0">{{ robotStatus.battery.toFixed(2) }}%</div>
+                        <small class="text-muted">Battery</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+
+          <!-- -------- ROW 2 -------- -->
+          <div class="row equal">
+            <!-- Map -->
+            <div class="col-12 col-md-6 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-2">Map</h6>
+                  <div class="tile-fill">
+                    <div id="map" class="w-100 h-100"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Robot Model -->
+            <div class="col-12 col-md-6 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-2">Robot Model</h6>
+                  <div class="tile-fill"><div id="div3DViewer" class="w-100 h-100"></div></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- WayPoint + E-Stop -->
+            <div class="col-12 col-lg-4 mb-2">
+              <div class="card">
+                <div class="card-body d-flex flex-column">
+                  <h6 class="mb-2 text-center">WayPoint</h6>
+                  <div class="row">
+                    <div class="col-6 col-md-4 mb-2" v-for="(wp, key) in waypoints" :key="key">
+                      <button class="btn btn-outline-primary btn-sm w-100"
+                              :disabled="!connected || isNavigating || estopActive"
+                              @click="goToWaypoint(key)">
+                        {{ wp.name }}
+                      </button>
+                    </div>
+                  </div>
+                  <div class="mt-auto text-center">
+                    <button class="btn btn-danger btn-sm" :disabled="!connected" @click="emergencyStop">
+                      EMERGENCY STOP
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div> <!-- /row 2 -->
+        </div> <!-- /dashboard -->
+      </div> <!-- /container -->
+    </main>
+
+    <!-- ===== Footer (fixed height) ===== -->
+    <footer class="app-footer bg-dark text-light px-3">
+      <div class="container d-flex align-items-center justify-content-between">
+        <small>page ends here!</small>
+        <small class="text-muted">No scrolling mode</small>
       </div>
+    </footer>
 
-    </div> <!-- /container -->
-  </main>
+  </div> <!-- /#app -->
 
-  <!-- Footer -->
-  <footer class="footer mt-auto bg-dark text-light py-3">
-    <div class="container">
-      <span>page ends here!</span>
-    </div>
-  </footer>
-
-  <!-- Load main.js with cache-buster -->
+  <!-- main.js with cache-buster -->
   <script>
     var script = document.createElement('script');
     script.src = 'main.js?v=7.' + Date.now();
