@@ -26,33 +26,16 @@
   <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
 
   <style>
-    /* Avoid flash of uncompiled Vue (shows both buttons) */
+    /* Avoid flash of uncompiled Vue (prevents both buttons showing briefly) */
     [v-cloak] { display: none; }
 
     /* ===== Page sizing: one screen, no scroll ===== */
     html, body { height: 100%; margin: 0; }
-    body { overflow: hidden; }                /* no scrollbars */
+    body { overflow: hidden; } /* no scrollbars */
 
-    /* Header/Footer fixed heights (tweak if needed) */
+    /* Header/Footer fixed heights */
     header.app-header { height: 56px; display: flex; align-items: center; }
     footer.app-footer { height: 36px; display: flex; align-items: center; }
-
-
-    .map-box{
-    width: 320px;           /* pick your size (or %); must be < card width */
-    height: 240px;
-    border: 1px solid #ddd;
-    display: flex;                  /* center any canvas the lib creates */
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;               /* avoid bleed */
-    }
-
-    .map-box canvas{
-    max-width: 100%;
-    max-height: 100%;
-    display: block;
-    }
 
     /* Main takes the rest of the viewport */
     .app-main {
@@ -64,47 +47,50 @@
     .dashboard {
       height: 100%;
       display: grid;
-      grid-template-rows: 1fr 1fr;           /* two equal rows */
+      grid-template-rows: 1fr 1fr; /* two equal rows */
       grid-row-gap: .5rem;
     }
 
     /* Make each Bootstrap column stretch and cards fill height */
     .row.equal { height: 100%; }
     .row.equal > [class*="col-"] { display: flex; }
-    .row.equal > [class*="col-"] .card {
-      flex: 1;
-      min-height: 0;                          /* allow inner flex items to shrink */
-    }
+    .row.equal > [class*="col-"] .card { flex: 1; min-height: 0; }
 
     /* Compact cards and let inner content scale */
     .card-body { padding: .65rem; display: flex; flex-direction: column; min-height: 0; }
     .tile-fill { flex: 1; min-height: 0; display: flex; justify-content: center; align-items: center; }
 
-    /* Map / Camera fill their tiles */
-    /* #map, #divCamera { width: 100%; height: 100%; border: 1px solid #ddd; } */
+    /* Centered, contained boxes for Map/Camera (kept a bit smaller than card) */
+    .map-box{
+      width: 90%;
+      height: 90%;
+      max-width: 420px;
+      max-height: 320px;
+      border: 1px solid #ddd;
+      display:flex; align-items:center; justify-content:center;
+      overflow:hidden;
+      margin: 0 auto; /* center inside card */
+    }
+    .map-box canvas, .map-box img { max-width:100%; max-height:100%; display:block; }
 
-    #map { width: 100%; height: 100%; border: 1px solid #ddd; }
-    #divCamera { width: 50px; height: 100px; border: 1px solid #ddd; }
-
-    /* 3D viewer area fills its tile */
+    /* 3D viewer fills its tile (use ROS3D’s internal size) */
     #div3DViewer { width: 100%; height: 100%; border: 1px solid #eee; }
 
-    /* Joystick pad + handle (smaller to fit) */
+    /* Joystick pad + handle */
     #dragstartzone{
-    position: relative; display:inline-block;
-    width: 240px; height: 240px;
-    border:1px solid #333; border-radius:50%; user-select:none;
+      position: relative; display:inline-block;
+      width: 240px; height: 240px;
+      border:1px solid #333; border-radius:50%;
+      user-select:none;
     }
-
     #dragCircle{
-    position:absolute;
-    width:44px; height:44px; border-radius:50%;
-    background:rgba(0,0,0,.3);
-    transform:translate(-50%,-50%);  /* <- place by center */
-    pointer-events:none;             /* clicks go to pad */
+      position:absolute;
+      width:44px; height:44px; border-radius:50%;
+      background:rgba(0,0,0,.3);
+      transform:translate(-50%, -50%); /* place by center */
+      pointer-events:none;
     }
     #dragCircle:hover{ background:rgba(255,0,0,.35); }
-
 
     /* Slim header text */
     .ros-label { font-size: .9rem; margin-right: .5rem; white-space: nowrap; }
@@ -113,10 +99,10 @@
 
 <body class="d-flex flex-column min-vh-100">
 
-  <!-- Vue now controls EVERYTHING inside this wrapper -->
+  <!-- Vue controls EVERYTHING inside this wrapper -->
   <div id="app" v-cloak class="d-flex flex-column w-100">
 
-    <!-- ===== Header (fixed height) ===== -->
+    <!-- ===== Header ===== -->
     <header class="app-header border-bottom">
       <div class="container">
         <div class="row align-items-center">
@@ -129,19 +115,22 @@
             <span class="ros-label">ROSBridge address</span>
             <input type="text" v-model="rosbridge_address" class="form-control form-control-sm" placeholder="wss://..." />
           </div>
-          <!-- Connect button (toggles) -->
+          <!-- Connect toggle -->
           <div class="col-12 col-lg-3 d-flex justify-content-lg-end">
             <button class="btn btn-success btn-sm" v-if="connected" @click="disconnect">Connected!</button>
-            <button class="btn btn-primary btn-sm" v-else @click="connect">Connect!</button>
+            <button class="btn btn-primary btn-sm" v-else :disabled="loading" @click="connect">
+              {{ loading ? 'Connecting…' : 'Connect!' }}
+            </button>
           </div>
         </div>
       </div>
     </header>
 
-    <!-- ===== Main (fills remaining height) ===== -->
+    <!-- ===== Main ===== -->
     <main class="app-main">
       <div class="container py-2 h-100">
         <div class="dashboard">
+
           <!-- -------- ROW 1 -------- -->
           <div class="row equal">
             <!-- Camera -->
@@ -150,7 +139,7 @@
                 <div class="card-body">
                   <h6 class="mb-2">Camera</h6>
                   <div class="tile-fill">
-                    <div id="divCamera" class="w-100 h-100"></div>
+                    <div id="divCamera" class="map-box"></div>
                   </div>
                 </div>
               </div>
@@ -158,32 +147,28 @@
 
             <!-- Joystick -->
             <div class="col-12 col-md-6 col-lg-4 mb-2">
-                <div class="card">
-                    <div class="card-body">
-                    <h6 class="mb-1 text-center">JoyStick</h6>
-                    <div class="small text-muted text-center mb-2">
-                        V: {{ joystick.vertical.toFixed(3) }} | H: {{ joystick.horizontal.toFixed(3) }}
+              <div class="card">
+                <div class="card-body">
+                  <h6 class="mb-1 text-center">JoyStick</h6>
+                  <div class="small text-muted text-center mb-2">
+                    V: {{ joystick.vertical.toFixed(3) }} | H: {{ joystick.horizontal.toFixed(3) }}
+                  </div>
+                  <div class="tile-fill">
+                    <div id="dragstartzone"
+                         ref="pad"
+                         @mousedown="startDrag"
+                         @mousemove="doDrag"
+                         @mouseup="stopDrag"
+                         @mouseleave="stopDrag"
+                         @touchstart.prevent="startDrag"
+                         @touchmove.prevent="doDrag"
+                         @touchend="stopDrag">
+                      <div id="dragCircle" :style="dragCircleStyle"></div>
                     </div>
-
-                    <div class="tile-fill">
-                        <!-- Joystick PAD (note: ref="pad") -->
-                        <div id="dragstartzone"
-                            ref="pad"
-                            @mousedown="startDrag"
-                            @mousemove="doDrag"
-                            @mouseup="stopDrag"
-                            @mouseleave="stopDrag"
-                            @touchstart.prevent="startDrag"
-                            @touchmove.prevent="doDrag"
-                            @touchend="stopDrag">
-                        <!-- Handle INSIDE the pad -->
-                        <div id="dragCircle" :style="dragCircleStyle"></div>
-                        </div>
-                    </div>
-                    </div>
+                  </div>
                 </div>
+              </div>
             </div>
-
 
             <!-- Robot Status -->
             <div class="col-12 col-lg-4 mb-2">
@@ -240,11 +225,8 @@
               <div class="card">
                 <div class="card-body">
                   <h6 class="mb-2">Map</h6>
-                  <!-- <div class="tile-fill">
-                    <div id="map" class="w-100 h-100"></div>
-                  </div> -->
                   <div class="tile-fill">
-                    <div id="map" class="map-box mx-auto"></div>
+                    <div id="map" class="map-box"></div>
                   </div>
                 </div>
               </div>
@@ -255,7 +237,9 @@
               <div class="card">
                 <div class="card-body">
                   <h6 class="mb-2">Robot Model</h6>
-                  <div class="tile-fill"><div id="div3DViewer" class="w-100 h-100"></div></div>
+                  <div class="tile-fill">
+                    <div id="div3DViewer" class="w-100 h-100"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -283,11 +267,12 @@
               </div>
             </div>
           </div> <!-- /row 2 -->
+
         </div> <!-- /dashboard -->
       </div> <!-- /container -->
     </main>
 
-    <!-- ===== Footer (fixed height) ===== -->
+    <!-- ===== Footer ===== -->
     <footer class="app-footer bg-dark text-light px-3">
       <div class="container d-flex align-items-center justify-content-between">
         <small>page ends here!</small>
@@ -300,7 +285,7 @@
   <!-- main.js with cache-buster -->
   <script>
     var script = document.createElement('script');
-    script.src = 'main.js?v=7.' + Date.now();
+    script.src = 'main.js?v=8.' + Date.now();
     document.head.appendChild(script);
   </script>
 </body>

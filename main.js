@@ -2,20 +2,20 @@ var app = new Vue({
   el: '#app',
 
   computed: {
-    ws_address() { return `${this.rosbridge_address}`; },
+    ws_address() { return `${this.rosbridge_address}`; }
   },
 
   data: {
     connected: false,
+    loading: false,
     ros: null,
     logs: [],
-    loading: false,
     topic: null,
     message: null,
     rosbridge_address: 'wss://i-03f2c71ab6b014cd6.robotigniteacademy.com/881af87e-7a3f-47ea-b17a-6449a81dfb6a/rosbridge/',
     port: '9090',
 
-    // Robot Status (shown in sidebar)
+    // Robot Status
     robotStatus: {
       speed: 0.0,
       speedAngular: 0.0,
@@ -26,35 +26,38 @@ var app = new Vue({
       lastOdomAt: 0,
     },
 
-    // ROS topic handles (top-level so we can unsubscribe cleanly)
+    // Joystick (single source of truth)
+    dragging: false,
+    handleSize: 44,
+    dragCircleStyle: {
+      display: 'none',
+      left: '50%',
+      top: '50%',
+      width: '44px',
+      height: '44px',
+      transform: 'translate(-50%, -50%)'
+    },
+    joystick: { vertical: 0, horizontal: 0 },
+
+    // ROS topic handles
     twistSub: null,
     odomSub:  null,
     cmdVelTopic: null,
     navGoalTopic: null,
     cmdVelTopicName: '/fastbot_1/cmd_vel',
 
-    // 2D stuff
+    // 2D Map
     mapRotated: false,
     mapViewer: null,
     mapGridClient: null,
-    interval: null,
 
-    // 3D stuff
+    // 3D
     viewer: null,
     tfClient: null,
     urdfClient: null,
 
-    // page content
+    // UI / control
     menu_title: 'Connection',
-
-    // joystick
-    dragging: false,
-    x: 'no',
-    y: 'no',
-    dragCircleStyle: { margin: '0px', top: '0px', left: '0px', display: 'none', width: '75px', height: '75px' },
-    joystick: { vertical: 0, horizontal: 0 },
-
-    // manual publisher
     pubInterval: null,
     buttonsOverride: false,
     manualLinear: 0,
@@ -63,18 +66,25 @@ var app = new Vue({
     // Navigation
     isNavigating: false,
     estopActive: false,
+    controlMode: 'Manual',
 
     // Waypoints
     waypoints: {
       sofa:         { x: -2.63, y: -0.91, theta: 1.0, name: 'Sofa' },
       living_room:  { x:  1.41, y: -1.93, theta: 1.0, name: 'Living Room' },
       kitchen:      { x:  0.732, y:  2.53, theta: 1.0, name: 'Kitchen' }
-    }
+    },
+
+    // timers
+    interval: null,
+    batteryInterval: null
   },
 
   methods: {
     connect() {
+      if (this.loading || this.connected) return;
       this.loading = true;
+
       this.ros = new ROSLIB.Ros({ url: this.rosbridge_address, groovyCompatibility: false });
 
       this.ros.on('connection', () => {
@@ -84,30 +94,9 @@ var app = new Vue({
 
         this.setupROSCommunication();
         this.autoDetectCmdVelTopic().then(name => this.subscribeTwist(name));
-
         this.setup3DViewer();
         this.setCamera();
-
-        this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: 260, height: 280 });
-        this.mapGridClient = new ROS2D.OccupancyGridClient({
-          ros: this.ros, rootObject: this.mapViewer.scene, continuous: true,
-        });
-        this.mapGridClient.on('change', () => {
-          this.mapViewer.scaleToDimensions(this.mapGridClient.currentGrid.width,
-                                           this.mapGridClient.currentGrid.height);
-          this.mapViewer.shift(this.mapGridClient.currentGrid.pose.position.x,
-                               this.mapGridClient.currentGrid.pose.position.y);
-          if (!this.mapRotated) {
-            const canvas = document.querySelector('#map canvas');
-            if (canvas) {
-              canvas.style.transform = 'rotate(90deg)';
-              canvas.style.transformOrigin = 'center center';
-              const mapDiv = document.getElementById('map');
-              if (mapDiv) mapDiv.style.overflow = 'visible';
-              this.mapRotated = true;
-            }
-          }
-        });
+        this.initMap();
 
         // start manual publish loop AFTER topics are set up
         this.pubInterval = setInterval(this.publish, 100); // ~10 Hz
@@ -115,6 +104,7 @@ var app = new Vue({
 
       this.ros.on('error', (error) => {
         this.logs.unshift(new Date().toTimeString() + ` - Error: ${error}`);
+        this.loading = false;
       });
 
       this.ros.on('close', () => {
@@ -135,7 +125,9 @@ var app = new Vue({
       });
     },
 
-    // SINGLE publish() (removed the duplicate)
+    disconnect() { if (this.ros) this.ros.close(); },
+
+    // Publish cmd_vel from joystick or manual buttons
     publish() {
       if (!this.connected || !this.cmdVelTopic) return;
 
@@ -144,11 +136,8 @@ var app = new Vue({
         Math.abs(this.joystick.vertical)   > 0.01 ||
         Math.abs(this.joystick.horizontal) > 0.01;
 
-      // Let Nav2 drive unless user explicitly overrides
-      if (this.isNavigating && !useButtons && !joyActive) return;
-
-      // Don't spam zeros
-      if (!useButtons && !joyActive) return;
+      if (this.isNavigating && !useButtons && !joyActive) return;  // let nav drive
+      if (!useButtons && !joyActive) return; // don't spam zeros
 
       const lin = useButtons ? this.manualLinear  : this.joystick.vertical;
       const ang = useButtons ? this.manualAngular : this.joystick.horizontal;
@@ -160,16 +149,7 @@ var app = new Vue({
       this.cmdVelTopic.publish(msg);
     },
 
-    disconnect() { this.ros && this.ros.close(); },
-
-    setTopic() {
-      this.topic = new ROSLIB.Topic({
-        ros: this.ros,
-        name: '/fastbot_1/cmd_vel',
-        messageType: 'geometry_msgs/msg/Twist' // ROS 2
-      });
-    },
-
+    // Optional manual controls (kept for completeness)
     forward()  { this.buttonsOverride = true; this.manualLinear =  0.2; this.manualAngular =  0.0; },
     backward() { this.buttonsOverride = true; this.manualLinear = -0.2; this.manualAngular =  0.0; },
     turnLeft() { this.buttonsOverride = true; this.manualLinear =  0.0; this.manualAngular = -0.5; },
@@ -177,85 +157,101 @@ var app = new Vue({
     stop()     { this.buttonsOverride = false; this.manualLinear = 0.0;  this.manualAngular = 0.0; },
 
     setCamera() {
-      const without_wss = this.rosbridge_address.split('wss://')[1];
-      const domain = without_wss.split('/')[0] + '/' + without_wss.split('/')[1];
+      const without_wss = (this.rosbridge_address || '').split('wss://')[1] || '';
+      const parts = without_wss.split('/');
+      const domain = (parts[0] || '') + '/' + (parts[1] || '');
       const host = domain + '/cameras';
       new MJPEGCANVAS.Viewer({
-        divID: 'divCamera', host, width: 325, height: 310,
-        topic: '/fastbot_1/camera/image_raw', ssl: true,
+        divID: 'divCamera',
+        host,
+        width: 320,
+        height: 240,
+        topic: '/fastbot_1/camera/image_raw',
+        ssl: true
       });
     },
 
-    // joystick handlers
-    sendCommand() {
-      const topic = new ROSLIB.Topic({
-        ros: this.ros,
-        name: '/fastbot_1/cmd_vel',
-        messageType: 'geometry_msgs/msg/Twist'
-      });
-      topic.publish(new ROSLIB.Message({
-        linear: { x: 0.2, y: 0, z: 0 },
-        angular:{ x: 0,   y: 0, z: 0.5 }
-      }));
+    /* ---------- Joystick: centered math & clamping ---------- */
+    startDrag(e) {
+      this.dragging = true;
+      this.updateJoystick(e);
     },
-    startDrag() { this.dragging = true; this.x = this.y = 0; },
-    // stopDrag()  { this.dragging = false; this.x = this.y = 'no'; this.dragCircleStyle.display = 'none'; this.resetJoystickVals(); },
+
     stopDrag() {
-    this.dragging = false;
-    this.x = this.y = 'no';
-    this.dragCircleStyle.display = 'none';
-    this.resetJoystickVals();        // reset joystick numbers to 0
-    this.buttonsOverride = false;    // prevent publish loop from re-sending motion
+      this.dragging = false;
+      this.dragCircleStyle.display = 'none';
+      this.resetJoystickVals();
+      this.buttonsOverride = false;
 
-    // Publish zero Twist immediately + short burst for safety
-    if (this.connected && this.cmdVelTopic) {
-        const zero = new ROSLIB.Message({
-        linear:  { x: 0, y: 0, z: 0 },
-        angular: { x: 0, y: 0, z: 0 }
-        });
-
-        // clear any existing zero-burst
-        if (this._zeroTimer) {
-        clearInterval(this._zeroTimer);
-        this._zeroTimer = null;
-        }
-
-        this.cmdVelTopic.publish(zero);   // once right away
-
+      // Publish a short burst of zero for safety
+      if (this.connected && this.cmdVelTopic) {
+        const zero = new ROSLIB.Message({ linear: { x:0, y:0, z:0 }, angular: { x:0, y:0, z:0 } });
+        if (this._zeroTimer) { clearInterval(this._zeroTimer); this._zeroTimer = null; }
+        this.cmdVelTopic.publish(zero);
         let count = 0;
         this._zeroTimer = setInterval(() => {
-        this.cmdVelTopic.publish(zero); // repeat for ~200 ms
-        if (++count >= 5) {
-            clearInterval(this._zeroTimer);
-            this._zeroTimer = null;
-        }
+          this.cmdVelTopic.publish(zero);
+          if (++count >= 5) { clearInterval(this._zeroTimer); this._zeroTimer = null; }
         }, 50);
-    }
+      }
     },
 
-    doDrag(event) {
+    doDrag(e) {
       if (!this.dragging) return;
-      this.x = event.offsetX; this.y = event.offsetY;
-      const ref = document.getElementById('dragstartzone');
-      this.dragCircleStyle.display = 'inline-block';
-      const minTop  = ref.offsetTop  - parseInt(this.dragCircleStyle.height) / 2;
-      const top     = this.y + minTop;
-      this.dragCircleStyle.top  = `${top}px`;
-      const minLeft = ref.offsetLeft - parseInt(this.dragCircleStyle.width) / 2;
-      const left    = this.x + minLeft;
-      this.dragCircleStyle.left = `${left}px`;
-      this.setJoystickVals();
+      this.updateJoystick(e);
     },
-    setJoystickVals() {
-      this.joystick.vertical   = -((this.y / 200) - 0.5);
-      this.joystick.horizontal =  +((this.x / 200) - 0.5);
+
+    setJoystickVals(dx, dy, max) {
+      // normalized [-1,1]; invert Y so up is positive
+      this.joystick.horizontal = +(dx / max).toFixed(3);
+      this.joystick.vertical   = +(-dy / max).toFixed(3);
     },
     resetJoystickVals() { this.joystick.vertical = 0; this.joystick.horizontal = 0; },
 
+    updateJoystick(e) {
+      const pad  = this.$refs.pad || document.getElementById('dragstartzone');
+      const rect = pad.getBoundingClientRect();
+
+      const p  = e && e.touches ? e.touches[0] : e;
+      const px = p.clientX;
+      const py = p.clientY;
+
+      // center of pad in viewport coords
+      const cx = rect.left + rect.width  / 2;
+      const cy = rect.top  + rect.height / 2;
+
+      // vector from center to pointer
+      let dx = px - cx;
+      let dy = py - cy;
+
+      // clamp to radius minus handle radius
+      const r   = rect.width / 2;                // pad radius (assumes circle)
+      const max = r - this.handleSize / 2;       // max travel for handle center
+      const len = Math.hypot(dx, dy);
+      if (len > max) { dx *= max / len; dy *= max / len; }
+
+      // place handle (centered) in pad-local coords
+      const handleX = r + dx;
+      const handleY = r + dy;
+
+      this.dragCircleStyle.display = 'inline-block';
+      this.dragCircleStyle.left    = handleX + 'px';
+      this.dragCircleStyle.top     = handleY + 'px';
+
+      // normalized outputs
+      this.setJoystickVals(dx, dy, max);
+    },
+    /* -------------------------------------------------------- */
+
+    /* ---------- 3D Viewer ---------- */
     setup3DViewer() {
       this.viewer = new ROS3D.Viewer({
-        background: '#cccccc', divID: 'div3DViewer', width: 325, height: 280,
-        antialias: true, fixedFrame: 'fastbot_1/odom'
+        background: '#cccccc',
+        divID: 'div3DViewer',
+        width: 325,
+        height: 280,
+        antialias: true,
+        fixedFrame: 'fastbot_1/odom'
       });
       this.viewer.addObject(new ROS3D.Grid({ color:'#0181c4', cellSize: 0.5, num_cells: 20 }));
       this.tfClient = new ROSLIB.TFClient({
@@ -269,8 +265,8 @@ var app = new Vue({
     },
     unset3DViewer() { const d = document.getElementById('div3DViewer'); if (d) d.innerHTML = ''; },
 
+    /* ---------- ROS topics ---------- */
     setupROSCommunication() {
-      // subs & pubs used elsewhere
       this.twistSub = new ROSLIB.Topic({
         ros: this.ros, name: '/fastbot_1/cmd_vel', messageType: 'geometry_msgs/msg/Twist'
       });
@@ -290,10 +286,12 @@ var app = new Vue({
         const p = odom.pose.pose.position;
         const q = odom.pose.pose.orientation;
         this.robotStatus.position = { x: Number((p && p.x) || 0), y: Number((p && p.y) || 0) };
+
         const siny_cosp = 2 * ((q.w||0) * (q.z||0) + (q.x||0) * (q.y||0));
         const cosy_cosp = 1 - 2 * ((q.y||0) * (q.y||0) + (q.z||0) * (q.z||0));
         const yaw = Math.atan2(siny_cosp, cosy_cosp);
         this.robotStatus.orientation = (yaw * 180) / Math.PI;
+
         this.robotStatus.lastOdomAt  = Date.now();
       });
 
@@ -302,6 +300,78 @@ var app = new Vue({
       });
     },
 
+    autoDetectCmdVelTopic() {
+      return new Promise((resolve) => {
+        this.ros.getTopics((res) => {
+          const list = (res && res.topics) || [];
+          const prefer = [
+            '/fastbot_1/cmd_vel_smoothed','/cmd_vel_smoothed','/fastbot_1/cmd_vel','/cmd_vel','/nav2_controller/cmd_vel'
+          ];
+          const found = prefer.find(t => list.includes(t)) || list.find(t => /cmd_vel/.test(t));
+          resolve(found || this.cmdVelTopicName);
+        }, () => resolve(this.cmdVelTopicName));
+      });
+    },
+
+    subscribeTwist(name) {
+      if (this.twistSub) { try { this.twistSub.unsubscribe(); } catch(e) {} this.twistSub = null; }
+      this.cmdVelTopicName = name;
+      this.twistSub = new ROSLIB.Topic({
+        ros: this.ros, name, messageType: 'geometry_msgs/msg/Twist'
+      });
+      this.twistSub.subscribe((msg) => {
+        const lin = Number((msg.linear  && msg.linear.x) || 0);
+        const ang = Number((msg.angular && msg.angular.z) || 0);
+        this.robotStatus.speed        = lin;
+        this.robotStatus.speedAngular = ang;
+        this.robotStatus.lastTwistAt  = Date.now();
+      });
+    },
+
+    /* ---------- Map ---------- */
+    initMap() {
+      const el = document.getElementById('map');
+      const w = el.clientWidth || 320;
+      const h = el.clientHeight || 240;
+
+      this.mapViewer = new ROS2D.Viewer({ divID: 'map', width: w, height: h });
+      this.mapGridClient = new ROS2D.OccupancyGridClient({
+        ros: this.ros, rootObject: this.mapViewer.scene, continuous: true
+      });
+
+      this.mapGridClient.on('change', () => {
+        const grid = this.mapGridClient.currentGrid;
+        this.mapViewer.scaleToDimensions(grid.width, grid.height);
+        this.mapViewer.shift(grid.pose.position.x, grid.pose.position.y);
+
+        // Optional rotate if your map is 90° off
+        if (!this.mapRotated) {
+          const canvas = document.querySelector('#map canvas');
+          if (canvas) {
+            canvas.style.transform = 'rotate(90deg)';
+            canvas.style.transformOrigin = 'center center';
+            const mapDiv = document.getElementById('map');
+            if (mapDiv) mapDiv.style.overflow = 'visible';
+            this.mapRotated = true;
+          }
+        }
+      });
+
+      // Keep viewer sized if layout changes
+      window.addEventListener('resize', () => {
+        const nw = el.clientWidth || w;
+        const nh = el.clientHeight || h;
+        if (this.mapViewer && this.mapViewer.stage && this.mapViewer.stage.canvas) {
+          this.mapViewer.stage.canvas.width  = nw;
+          this.mapViewer.stage.canvas.height = nh;
+          this.mapViewer.stage.canvas.style.width  = nw + 'px';
+          this.mapViewer.stage.canvas.style.height = nh + 'px';
+          this.mapViewer.stage.update();
+        }
+      });
+    },
+
+    /* ---------- Waypoints ---------- */
     goToWaypoint(waypointKey) {
       if (!this.connected || !this.navGoalTopic) return;
       const wp = this.waypoints[waypointKey];
@@ -338,62 +408,30 @@ var app = new Vue({
         if (++count >= 20) { clearInterval(t); this.estopActive = false; this.controlMode = 'Manual'; }
       }, 50);
     },
-
-    autoDetectCmdVelTopic() {
-      return new Promise((resolve) => {
-        this.ros.getTopics((res) => {
-          const list = (res && res.topics) || [];
-          const prefer = [
-            '/fastbot_1/cmd_vel_smoothed','/cmd_vel_smoothed','/fastbot_1/cmd_vel','/cmd_vel','/nav2_controller/cmd_vel'
-          ];
-          const found = prefer.find(t => list.includes(t)) || list.find(t => /cmd_vel/.test(t));
-          resolve(found || this.cmdVelTopicName);
-        }, () => resolve(this.cmdVelTopicName));
-      });
-    },
-
-    subscribeTwist(name) {
-      if (this.twistSub) { try { this.twistSub.unsubscribe(); } catch(e) {} this.twistSub = null; }
-      this.cmdVelTopicName = name;
-      this.twistSub = new ROSLIB.Topic({
-        ros: this.ros, name, messageType: 'geometry_msgs/msg/Twist'
-      });
-      this.twistSub.subscribe((msg) => {
-        const lin = Number((msg.linear  && msg.linear.x) || 0);
-        const ang = Number((msg.angular && msg.angular.z) || 0);
-        this.robotStatus.speed        = lin;
-        this.robotStatus.speedAngular = ang;
-        this.robotStatus.lastTwistAt  = Date.now();
-      });
-    },
   },
 
-mounted() {
-// your existing mouseup listener
-window.addEventListener('mouseup', this.stopDrag);
+  mounted() {
+    // mouseup listener to stop dragging if released outside pad
+    window.addEventListener('mouseup', this.stopDrag);
 
-// existing connection check every 10s
-this.interval = setInterval(() => {
-    if (this.ros && this.ros.isConnected) {
-    this.ros.getNodes(() => {}, () => {});
-    }
-}, 10000);
+    // connection keepalive every 10s
+    this.interval = setInterval(() => {
+      if (this.ros && this.ros.isConnected) {
+        this.ros.getNodes(() => {}, () => {});
+      }
+    }, 10000);
 
-// --- Simulated battery drain every 5s ---
-this.batteryInterval = setInterval(() => {
-    // subtract 1–3% randomly
-    this.robotStatus.battery -= Math.random() * 3;
+    // Simulated battery drain
+    this.batteryInterval = setInterval(() => {
+      this.robotStatus.battery -= Math.random() * 3;
+      if (this.robotStatus.battery < 0) this.robotStatus.battery = 0;
+      if (this.robotStatus.battery > 100) this.robotStatus.battery = 100;
+    }, 5000);
+  },
 
-    // clamp between 0 and 100
-    if (this.robotStatus.battery < 0) this.robotStatus.battery = 0;
-    if (this.robotStatus.battery > 100) this.robotStatus.battery = 100;
-}, 5000);
-},
-beforeDestroy() {
-// clean up timers
-if (this.interval) clearInterval(this.interval);
-if (this.batteryInterval) clearInterval(this.batteryInterval);
-window.removeEventListener('mouseup', this.stopDrag);
-},
-
+  beforeDestroy() {
+    if (this.interval) clearInterval(this.interval);
+    if (this.batteryInterval) clearInterval(this.batteryInterval);
+    window.removeEventListener('mouseup', this.stopDrag);
+  }
 });
