@@ -90,18 +90,21 @@
     #div3DViewer { width: 100%; height: 100%; border: 1px solid #eee; }
 
     /* Joystick pad + handle (smaller to fit) */
-    #dragstartzone {
-      position: relative; display: inline-block;
-      width: 200px; height: 200px;
-      border: 1px solid #333; border-radius: 50%; user-select: none;
+    #dragstartzone{
+    position: relative; display:inline-block;
+    width: 240px; height: 240px;
+    border:1px solid #333; border-radius:50%; user-select:none;
     }
-    #dragCircle {
-      position: absolute; width: 44px; height: 44px;
-      border-radius: 50%; background: rgba(0,0,0,.3);
-      transform: translate(-50%, -50%);
-      pointer-events: none;
+
+    #dragCircle{
+    position:absolute;
+    width:44px; height:44px; border-radius:50%;
+    background:rgba(0,0,0,.3);
+    transform:translate(-50%,-50%);  /* <- place by center */
+    pointer-events:none;             /* clicks go to pad */
     }
-    #dragCircle:hover { background: rgba(255,0,0,.35); }
+    #dragCircle:hover{ background:rgba(255,0,0,.35); }
+
 
     /* Slim header text */
     .ros-label { font-size: .9rem; margin-right: .5rem; white-space: nowrap; }
@@ -155,19 +158,32 @@
 
             <!-- Joystick -->
             <div class="col-12 col-md-6 col-lg-4 mb-2">
-              <div class="card">
-                <div class="card-body">
-                  <h6 class="mb-1 text-center">JoyStick</h6>
-                  <div class="small text-muted text-center mb-2">
-                    V: {{ joystick.vertical.toFixed(3) }} | H: {{ joystick.horizontal.toFixed(3) }}
-                  </div>
-                  <div class="tile-fill">
-                    <div id="dragstartzone" @mousedown="startDrag" @mousemove="doDrag"></div>
-                    <div id="dragCircle" :style="dragCircleStyle"></div>
-                  </div>
+                <div class="card">
+                    <div class="card-body">
+                    <h6 class="mb-1 text-center">JoyStick</h6>
+                    <div class="small text-muted text-center mb-2">
+                        V: {{ joystick.vertical.toFixed(3) }} | H: {{ joystick.horizontal.toFixed(3) }}
+                    </div>
+
+                    <div class="tile-fill">
+                        <!-- Joystick PAD (note: ref="pad") -->
+                        <div id="dragstartzone"
+                            ref="pad"
+                            @mousedown="startDrag"
+                            @mousemove="doDrag"
+                            @mouseup="stopDrag"
+                            @mouseleave="stopDrag"
+                            @touchstart.prevent="startDrag"
+                            @touchmove.prevent="doDrag"
+                            @touchend="stopDrag">
+                        <!-- Handle INSIDE the pad -->
+                        <div id="dragCircle" :style="dragCircleStyle"></div>
+                        </div>
+                    </div>
+                    </div>
                 </div>
-              </div>
             </div>
+
 
             <!-- Robot Status -->
             <div class="col-12 col-lg-4 mb-2">
